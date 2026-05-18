@@ -18,7 +18,7 @@ export const getListingsAPI = async ({ search = '', category = 'all' } = {}) => 
       (l) =>
         l.title.toLowerCase().includes(q) ||
         l.description.toLowerCase().includes(q) ||
-        l.category.toLowerCase().includes(q)
+        l.category?.name?.toLowerCase().includes(q)
     )
   }
 
@@ -33,4 +33,21 @@ export const getListingByIdAPI = async (id) => {
   if (!listing) throw { message: 'Listing not found', status: 404 }
 
   return { listing }
+}
+
+// POST /api/listings
+export const createListingAPI = async (data) => {
+  await delay(500)
+
+  const newListing = {
+    ...data,
+    _id: `listing_${Date.now()}`,
+    status: 'active',
+    viewsCount: 0,
+    favoritesCount: 0,
+    createdAt: new Date().toISOString(),
+  }
+
+  mockListings.push(newListing)
+  return { listing: newListing }
 }

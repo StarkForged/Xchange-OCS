@@ -31,6 +31,12 @@ export default function Navbar() {
 
           {isAuthenticated ? (
             <div className="flex items-center gap-3">
+              <Link
+                to="/create-listing"
+                className="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+              >
+                + Sell
+              </Link>
               <span className="text-sm text-gray-700 hidden sm:block">
                 Hi, {user?.name?.split(' ')[0]}
               </span>

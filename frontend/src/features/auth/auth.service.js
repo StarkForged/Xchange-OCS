@@ -1,4 +1,4 @@
-import { loginAPI } from '../../api/auth.api'
+import { loginAPI, registerAPI } from '../../api/auth.api'
 
 // Business logic layer — sits between the page and the API.
 // Returns { token, user } on success; throws on failure.

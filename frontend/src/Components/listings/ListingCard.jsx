@@ -43,13 +43,11 @@ export default function ListingCard({ listing }) {
     >
       {/* Image */}
       <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-        <div className="w-full h-80 bg-gray-100 flex items-center justify-center text-center p-4">
-          <img
-            src={image}
-            alt={title || 'Listing'}
-            className="block w-full h-full flex items-center justify-center content-center"
-          />
-        </div>
+        <img
+          src={image}
+          alt={title || 'Listing'}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
 
         {isSold && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
