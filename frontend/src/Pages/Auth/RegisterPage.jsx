@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import useAuthStore from '../../Store/authStore'
-import { mockRegister } from '../../Services/authService'
-
+import useAuthStore from '../../store/auth.Store'
+import { registerUser } from "../../features/auth/auth.service";
 const ROLES = [
   { value: 'buyer', label: 'Buyer', desc: 'Browse and buy items' },
   { value: 'seller', label: 'Seller', desc: 'List and sell items' },
@@ -44,7 +43,7 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      const { user } = await mockRegister(form)
+      const { user } = await registerUser (form)
       // Auto-login: generate token locally after successful registration
       const token = `mock-token-${user._id}-${Date.now()}`
       setAuth(user, token)

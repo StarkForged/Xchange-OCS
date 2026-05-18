@@ -19,7 +19,7 @@ const useAuthStore = create(
       clearAuth: () =>
         set({ user: null, token: null, isAuthenticated: false }),
     }),
-    { name: 'xchange-auth' }
+    { name: 'token' }
   )
 )
 

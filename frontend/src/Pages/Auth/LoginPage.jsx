@@ -1,16 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import useAuthStore from '../../Store/authStore'
-import { mockLogin } from '../../Services/authService'
-
-const validate = ({ email, password }) => {
-  const errors = {}
-  if (!email) errors.email = 'Email is required'
-  else if (!/\S+@\S+\.\S+/.test(email)) errors.email = 'Enter a valid email address'
-  if (!password) errors.password = 'Password is required'
-  else if (password.length < 6) errors.password = 'Password must be at least 6 characters'
-  return errors
-}
+import useAuthStore from '../../store/auth.Store'
+import { loginUser } from '../../features/auth/auth.service'
+import { validateLogin } from '../../features/auth/auth.validation'
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -30,14 +22,14 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const errs = validate(form)
+    const errs = validateLogin(form)
     if (Object.keys(errs).length) {
       setErrors(errs)
       return
     }
     setLoading(true)
     try {
-      const { token, user } = await mockLogin(form)
+      const { token, user } = await loginUser(form)
       setAuth(user, token)
       navigate('/')
     } catch (err) {

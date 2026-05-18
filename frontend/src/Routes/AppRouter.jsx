@@ -4,6 +4,7 @@ import MainLayout from '../Layouts/MainLayout'
 import LoginPage from '../Pages/Auth/LoginPage'
 import RegisterPage from '../Pages/Auth/RegisterPage'
 import HomePage from '../Pages/Home/HomePage'
+import ListingsPage from '../Pages/Listings/ListingsPage'
 
 export default function AppRouter() {
   return (
@@ -15,6 +16,7 @@ export default function AppRouter() {
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
             <Route path="/" element={<HomePage />} />
+            <Route path="/listings" element={<ListingsPage />} />
           </Route>
         </Route>
 

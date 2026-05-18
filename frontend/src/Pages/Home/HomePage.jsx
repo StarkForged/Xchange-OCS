@@ -1,4 +1,5 @@
-import useAuthStore from '../../Store/authStore'
+import { Link } from 'react-router-dom'
+import useAuthStore from '../../store/auth.Store'
 
 export default function HomePage() {
   const { user } = useAuthStore()
@@ -13,8 +14,17 @@ export default function HomePage() {
           Hello, {user?.name}!
         </p>
         <p className="text-gray-400 text-sm mb-8">
-          Listings, search, and more coming in Phase 2.
+          Browse listings, find great deals, and connect with sellers.
         </p>
+
+        <div className="flex items-center justify-center gap-3 flex-wrap mb-6">
+          <Link
+            to="/listings"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-6 py-2.5 rounded-lg transition-colors"
+          >
+            Browse Marketplace
+          </Link>
+        </div>
 
         <div className="flex items-center justify-center gap-3 flex-wrap">
           <span className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-full text-sm font-medium">

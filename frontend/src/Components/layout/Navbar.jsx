@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import useAuthStore from '../../Store/authStore'
+import useAuthStore from '../../store/auth.Store'
 import Avatar from '../common/Avatar'
 
 export default function Navbar() {
