@@ -1,11 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './ProtectedRoute'
-import MainLayout from '../Layouts/MainLayout'
-import LoginPage from '../Pages/Auth/LoginPage'
-import RegisterPage from '../Pages/Auth/RegisterPage'
-import HomePage from '../Pages/Home/HomePage'
-import ListingsPage from '../Pages/Listings/ListingsPage'
-import CreateListingPage from '../Pages/listings/CreateListingPage'
+import MainLayout from '../layouts/MainLayout'
+import LoginPage from '../pages/auth/LoginPage'
+import RegisterPage from '../pages/auth/RegisterPage'
+import HomePage from '../pages/home/HomePage'
+import ListingsPage from '../pages/listings/ListingsPage'
+import CreateListingPage from '../pages/listings/CreateListingPage'
 
 export default function AppRouter() {
   return (
