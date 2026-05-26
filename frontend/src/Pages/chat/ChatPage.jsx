@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getListingById } from '../../features/listings/listings.service'
 import { getMessages, sendMessage } from '../../features/chat/chat.service'
+import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
@@ -92,6 +93,25 @@ export default function ChatPage() {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
 
+  /* ── Socket: join room + receive real-time messages ── */
+  useEffect(() => {
+    if (loading) return
+    const socket = getSocket()
+    if (!socket.connected) socket.connect()
+    socket.emit('join_chat', { listingId })
+    const onReceive = (message) => setMessages((prev) => [...prev, message])
+    socket.on('receive_message', onReceive)
+    return () => {
+      socket.emit('leave_chat', { listingId })
+      socket.off('receive_message', onReceive)
+    }
+  }, [listingId, loading])
+
+  /* ── Disconnect socket on unmount ── */
+  useEffect(() => {
+    return () => { getSocket().disconnect() }
+  }, [])
+
   const handleSend = () => {
     const text = inputText.trim()
     if (!text || !user || !listing) return
@@ -105,6 +125,7 @@ export default function ChatPage() {
     setInputText('')
     inputRef.current?.focus()
     sendMessage(listingId, { senderId: user._id, text })
+    getSocket().emit('send_message', { listingId, message: newMsg })
   }
 
   const handleKeyDown = (e) => {

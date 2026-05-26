@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getConversations, getMessages, sendMessage } from '../../features/chat/chat.service'
 import { getListingById } from '../../features/listings/listings.service'
+import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
@@ -178,6 +179,32 @@ export default function ChatDashboard() {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeMessages.length])
 
+  // ── Socket: join room + receive real-time messages ──
+  useEffect(() => {
+    if (!activeId || loadingChat) return
+    const socket = getSocket()
+    if (!socket.connected) socket.connect()
+    socket.emit('join_chat', { listingId: activeId })
+    const onReceive = (message) => {
+      setActiveMessages((prev) => [...prev, message])
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.listingId === activeId ? { ...c, lastMessage: message } : c
+        )
+      )
+    }
+    socket.on('receive_message', onReceive)
+    return () => {
+      socket.emit('leave_chat', { listingId: activeId })
+      socket.off('receive_message', onReceive)
+    }
+  }, [activeId, loadingChat])
+
+  // ── Disconnect socket on unmount ──
+  useEffect(() => {
+    return () => { getSocket().disconnect() }
+  }, [])
+
   // ── Send ──
   const handleSend = () => {
     const text = inputText.trim()
@@ -192,6 +219,7 @@ export default function ChatDashboard() {
     setInputText('')
     inputRef.current?.focus()
     sendMessage(activeId, { senderId: user._id, text })
+    getSocket().emit('send_message', { listingId: activeId, message: newMsg })
 
     // Update sidebar preview
     setConversations((prev) =>
