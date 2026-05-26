@@ -17,8 +17,7 @@ const timeAgo = (dateStr) => {
 
 const formatSellerName = (seller) => {
   if (typeof seller !== 'string') return 'Unknown Seller'
-  const num = seller.replace('user_', '')
-  return `Seller #${num}`
+  return `Seller #${seller.replace('user_', '')}`
 }
 
 const formatAttributeKey = (key) =>
@@ -28,11 +27,11 @@ export default function ListingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [listing, setListing] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [listing, setListing]     = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState(null)
   const [activeImage, setActiveImage] = useState(0)
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved]         = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -41,10 +40,7 @@ export default function ListingDetailPage() {
       setError(null)
       try {
         const data = await getListingById(id)
-        if (!cancelled) {
-          setListing(data)
-          setActiveImage(0)
-        }
+        if (!cancelled) { setListing(data); setActiveImage(0) }
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Listing not found')
       } finally {
@@ -55,6 +51,7 @@ export default function ListingDetailPage() {
     return () => { cancelled = true }
   }, [id])
 
+  /* ── loading ── */
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -63,20 +60,19 @@ export default function ListingDetailPage() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          <span className="text-sm">Loading listing...</span>
+          <span className="text-sm font-medium tracking-wide">Loading listing…</span>
         </div>
       </div>
     )
   }
 
+  /* ── error ── */
   if (error || !listing) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="text-5xl mb-4">😕</div>
-          <p className="text-gray-700 font-semibold text-base mb-2">
-            {error || 'Listing not found'}
-          </p>
+          <p className="text-gray-700 font-semibold text-base mb-3">{error || 'Listing not found'}</p>
           <button
             onClick={() => navigate('/listings')}
             className="text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
@@ -89,33 +85,38 @@ export default function ListingDetailPage() {
   }
 
   const {
-    title,
-    description,
-    price,
-    category,
-    images,
-    seller,
-    location,
-    status,
-    viewsCount,
-    favoritesCount,
-    attributes,
-    createdAt,
+    title, description, price, category,
+    images, seller, location, status,
+    viewsCount, favoritesCount, attributes, createdAt,
   } = listing
 
-  const displayImages = images?.length > 0 ? images : [defaultImage]
-  const mainImage = displayImages[activeImage] ?? defaultImage
-  const isSold = status === 'sold'
-  const hasAttributes = attributes && Object.keys(attributes).length > 0
+  const displayImages  = images?.length > 0 ? images : [defaultImage]
+  const mainImage      = displayImages[activeImage] ?? defaultImage
+  const isSold         = status === 'sold'
+  const hasAttributes  = attributes && Object.keys(attributes).length > 0
+  const saves          = favoritesCount ?? 0
+  const views          = viewsCount ?? 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-gray-50 to-gray-100">
+      <style>{`
+        @keyframes fsu {
+          from { opacity: 0; transform: translateY(22px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        .fsu   { animation: fsu 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+        .fsu-1 { animation: fsu 0.5s 0.07s cubic-bezier(0.22,1,0.36,1) both; }
+        .fsu-2 { animation: fsu 0.5s 0.14s cubic-bezier(0.22,1,0.36,1) both; }
+        .fsu-3 { animation: fsu 0.5s 0.21s cubic-bezier(0.22,1,0.36,1) both; }
+        .fsu-4 { animation: fsu 0.5s 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+      `}</style>
+
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Back */}
+        {/* ── Back ── */}
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-indigo-600 font-medium mb-6 transition-colors group"
+          className="fsu inline-flex items-center gap-2 text-sm text-gray-500 hover:text-indigo-600 font-medium mb-7 transition-colors group"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -123,39 +124,66 @@ export default function ListingDetailPage() {
           Back to Listings
         </button>
 
-        {/* Top: image gallery + info panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        {/* ── TOP GRID: image | sticky info panel ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 items-start">
 
           {/* LEFT — Image gallery */}
-          <div className="space-y-3">
-            <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 shadow-md">
+          <div className="fsu-1 space-y-3">
+
+            {/* Main image */}
+            <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-200 shadow-xl ring-1 ring-black/8 group/img">
               <img
+                key={activeImage}
                 src={mainImage}
                 alt={title}
-                className="w-full h-full object-cover transition-opacity duration-200"
+                className="w-full h-full object-cover group-hover/img:scale-[1.04] transition-transform duration-700 ease-out"
               />
+
+              {/* Depth gradient overlay */}
+              <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/35 to-transparent pointer-events-none" />
+
+              {/* Sold overlay */}
               {isSold && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <span className="bg-white text-gray-800 text-sm font-semibold px-5 py-2 rounded-full tracking-wide">
+                <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
+                  <span className="bg-white text-gray-800 text-sm font-bold px-6 py-2.5 rounded-full tracking-widest shadow-lg uppercase">
                     Sold
                   </span>
                 </div>
               )}
-              <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full capitalize">
+
+              {/* Category pill — top left */}
+              <span className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-md text-indigo-700 text-xs font-bold px-3 py-1 rounded-full capitalize shadow-sm tracking-wide">
                 {category?.name || 'General'}
               </span>
+
+              {/* Image counter — top right */}
+              {displayImages.length > 1 && (
+                <span className="absolute top-3 right-3 z-10 bg-black/50 backdrop-blur-md text-white text-xs font-semibold px-2.5 py-1 rounded-full tabular-nums">
+                  {activeImage + 1} / {displayImages.length}
+                </span>
+              )}
+
+              {/* View count — bottom left (on gradient) */}
+              <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 text-white/90 text-xs font-medium">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                {views} views
+              </div>
             </div>
 
+            {/* Thumbnails */}
             {displayImages.length > 1 && (
               <div className="flex gap-2 flex-wrap">
                 {displayImages.map((img, i) => (
                   <button
                     key={i}
                     onClick={() => setActiveImage(i)}
-                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-150 flex-shrink-0 ${
+                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-200 flex-shrink-0 ${
                       activeImage === i
-                        ? 'border-indigo-500 shadow-sm scale-105'
-                        : 'border-gray-200 hover:border-indigo-300 opacity-70 hover:opacity-100'
+                        ? 'border-indigo-500 shadow-md scale-105 ring-2 ring-indigo-200'
+                        : 'border-gray-200 hover:border-indigo-300 opacity-55 hover:opacity-100 hover:scale-105'
                     }`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" />
@@ -165,28 +193,31 @@ export default function ListingDetailPage() {
             )}
           </div>
 
-          {/* RIGHT — Info panel */}
-          <div className="flex flex-col gap-5">
+          {/* RIGHT — Sticky info card */}
+          <div className="fsu-2 md:sticky md:top-6 bg-white rounded-2xl border border-gray-100 shadow-md p-6 space-y-5">
 
-            {/* Title */}
+            {/* Eyebrow + Title */}
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
+              <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
+                {category?.name || 'General'}
+              </p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight tracking-tight">
                 {title || 'Untitled Listing'}
               </h1>
             </div>
 
             {/* Price */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-3xl font-bold text-indigo-600">
+            <div className="flex items-end gap-3 flex-wrap">
+              <span className="text-4xl sm:text-5xl font-black text-indigo-600 tracking-tight leading-none">
                 {formatPrice(price)}
               </span>
               {price?.negotiable && (
-                <span className="text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-1 rounded-full font-medium">
+                <span className="mb-1 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1 rounded-full font-bold">
                   Negotiable
                 </span>
               )}
               {isSold && (
-                <span className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-1 rounded-full font-medium">
+                <span className="mb-1 text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-1 rounded-full font-bold">
                   Sold
                 </span>
               )}
@@ -194,32 +225,27 @@ export default function ListingDetailPage() {
 
             {/* Location */}
             {location?.city && (
-              <div className="flex items-center gap-2 text-gray-500 text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="inline-flex items-center gap-2 text-sm bg-gray-50 border border-gray-200 px-3.5 py-2 rounded-xl w-fit">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span>{location.city}, {location.state}</span>
+                <span className="font-semibold text-gray-700">{location.city}, {location.state}</span>
               </div>
             )}
 
-            {/* Stats */}
-            <div className="flex items-center gap-5 text-sm text-gray-400">
-              <span className="flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                {viewsCount ?? 0} views
-              </span>
-              <span className="flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-                {favoritesCount ?? 0} saves
-              </span>
-              <span>{timeAgo(createdAt)}</span>
-            </div>
+            {/* Engagement trigger — social proof */}
+            {saves > 0 && !isSold && (
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3.5 py-2.5 rounded-xl">
+                <span className="text-base">🔥</span>
+                <span>{saves} {saves === 1 ? 'person has' : 'people have'} saved this listing</span>
+              </div>
+            )}
+
+            {/* Posted time */}
+            <p className="text-xs text-gray-400 -mt-1">
+              Posted <span className="font-semibold text-gray-500">{timeAgo(createdAt)}</span>
+            </p>
 
             <div className="border-t border-gray-100" />
 
@@ -227,9 +253,10 @@ export default function ListingDetailPage() {
             <div className="flex flex-col gap-3">
               <button
                 disabled={isSold}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3.5 px-6 rounded-xl transition-colors shadow-sm"
+                onClick={() => navigate(`/chat/${id}`)}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed disabled:transform-none text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md text-sm tracking-wide"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
                 {isSold ? 'Item Sold' : 'Chat with Seller'}
@@ -237,68 +264,93 @@ export default function ListingDetailPage() {
 
               <button
                 onClick={() => setSaved((s) => !s)}
-                className={`w-full flex items-center justify-center gap-2 font-semibold py-3.5 px-6 rounded-xl border-2 transition-all duration-150 ${
+                className={`w-full flex items-center justify-center gap-2 font-bold py-4 px-6 rounded-xl border-2 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-sm tracking-wide ${
                   saved
-                    ? 'bg-rose-50 text-rose-600 border-rose-300 hover:bg-rose-100'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'
+                    ? 'bg-rose-50 text-rose-600 border-rose-300 hover:bg-rose-100 hover:shadow-lg hover:shadow-rose-100 shadow-sm'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-600 hover:shadow-lg'
                 }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill={saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className={`h-5 w-5 flex-shrink-0 transition-transform duration-200 ${saved ? 'scale-110' : ''}`}
+                  fill={saved ? 'currentColor' : 'none'}
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                 </svg>
-                {saved ? 'Saved' : 'Save Listing'}
+                {saved ? 'Saved to Wishlist!' : 'Save Listing'}
               </button>
+            </div>
+
+            <div className="border-t border-gray-100" />
+
+            {/* Seller mini-card inside sticky panel */}
+            <div className="flex items-center gap-3">
+              <div className="relative flex-shrink-0">
+                <img
+                  src={defaultAvatar}
+                  alt="Seller"
+                  className="w-11 h-11 rounded-full object-cover border-2 border-indigo-100 shadow-sm"
+                />
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-800 leading-tight truncate">
+                  {formatSellerName(seller)}
+                </p>
+                <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                  ✓ Verified Seller
+                </span>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-[10px] text-gray-400 mb-0.5">Joined</p>
+                <p className="text-xs font-semibold text-gray-600">{timeAgo(createdAt)}</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Bottom sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* ── BOTTOM: Description + Attributes ── */}
+        <div className="space-y-5">
 
-          {/* Description — 2 cols */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-3">Description</h2>
-            <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+          {/* Description */}
+          <div className="fsu-3 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 p-6">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">
+              <span className="w-1 h-4 bg-indigo-500 rounded-full flex-shrink-0" />
+              Description
+            </h2>
+            <p className="text-gray-600 text-sm leading-7 whitespace-pre-line">
               {description || 'No description provided.'}
             </p>
           </div>
 
-          {/* Seller card — 1 col */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col gap-4">
-            <h2 className="text-base font-semibold text-gray-900">Seller Info</h2>
-            <div className="flex items-center gap-3">
-              <img
-                src={defaultAvatar}
-                alt="Seller avatar"
-                className="w-12 h-12 rounded-full object-cover border-2 border-gray-100"
-              />
-              <div>
-                <p className="font-semibold text-gray-800 text-sm">{formatSellerName(seller)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">Active member</p>
+          {/* Attributes */}
+          {hasAttributes && (
+            <div className="fsu-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 p-6">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">
+                <span className="w-1 h-4 bg-indigo-500 rounded-full flex-shrink-0" />
+                Product Details
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {Object.entries(attributes).map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="group bg-gray-50 hover:bg-indigo-50 border border-gray-100 hover:border-indigo-200 hover:-translate-y-0.5 hover:shadow-sm rounded-xl px-4 py-3 transition-all duration-200 cursor-default"
+                  >
+                    <p className="text-[10px] font-black text-indigo-400 group-hover:text-indigo-500 uppercase tracking-widest mb-1.5">
+                      {formatAttributeKey(key)}
+                    </p>
+                    <p className="text-sm font-bold text-gray-800 leading-tight">
+                      {String(value)}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="border-t border-gray-100 pt-3">
-              <p className="text-xs text-gray-400">
-                Listed <span className="font-medium text-gray-600">{timeAgo(createdAt)}</span>
-              </p>
-            </div>
-          </div>
+          )}
         </div>
-
-        {/* Attributes */}
-        {hasAttributes && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Product Details</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {Object.entries(attributes).map(([key, value]) => (
-                <div key={key} className="bg-gray-50 rounded-xl px-4 py-3">
-                  <p className="text-xs text-gray-400 mb-1">{formatAttributeKey(key)}</p>
-                  <p className="text-sm font-semibold text-gray-800">{String(value)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
       </div>
     </div>

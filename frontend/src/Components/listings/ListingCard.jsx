@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
@@ -27,38 +28,156 @@ export default function ListingCard({ listing }) {
     status,
     viewsCount,
     favoritesCount,
-    createdAt
+    createdAt,
   } = listing
 
-  const image = images?.[0] ?? defaultImage
+  const allImages = images?.length > 0 ? images : [defaultImage]
+  const hasMultiple = allImages.length > 1
+
+  const [activeIdx, setActiveIdx] = useState(0)
+  const [hovered, setHovered] = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
+  const scrollAccRef = useRef(0)
+  const scrollTimerRef = useRef(null)
 
   const isSold = status === 'sold'
   const sellerId = typeof seller === 'string' ? seller.replace('user_', '#') : '?'
 
+  const goNext = useCallback((e) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    setActiveIdx((i) => (i + 1) % allImages.length)
+    setImgLoaded(false)
+  }, [allImages.length])
+
+  const goPrev = useCallback((e) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    setActiveIdx((i) => (i - 1 + allImages.length) % allImages.length)
+    setImgLoaded(false)
+  }, [allImages.length])
+
+  const handleWheel = useCallback((e) => {
+    if (!hasMultiple) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    scrollAccRef.current += e.deltaY
+    clearTimeout(scrollTimerRef.current)
+    scrollTimerRef.current = setTimeout(() => {
+      scrollAccRef.current = 0
+    }, 300)
+
+    if (Math.abs(scrollAccRef.current) >= 80) {
+      scrollAccRef.current > 0 ? goNext() : goPrev()
+      scrollAccRef.current = 0
+    }
+  }, [hasMultiple, goNext, goPrev])
+
+  const goTo = useCallback((e, idx) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setActiveIdx(idx)
+    setImgLoaded(false)
+  }, [])
+
   return (
     <Link
       to={`/listings/${_id}`}
-      className="group bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-md hover:border-indigo-200 transition-all duration-200 flex flex-col"
+      className="group bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-lg hover:border-indigo-200 transition-all duration-200 flex flex-col"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      {/* Image */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+      {/* Image area */}
+      <div
+        className="relative aspect-[4/3] overflow-hidden bg-gray-100 select-none"
+        onWheel={handleWheel}
+      >
+        {/* Main image with fade transition */}
         <img
-          src={image}
+          key={activeIdx}
+          src={allImages[activeIdx]}
           alt={title || 'Listing'}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          onLoad={() => setImgLoaded(true)}
+          className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-[1.03] ${
+            imgLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
         />
 
+        {/* Skeleton while loading */}
+        {!imgLoaded && (
+          <div className="absolute inset-0 bg-gray-200 animate-pulse" />
+        )}
+
+        {/* Sold overlay */}
         {isSold && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
             <span className="bg-white text-gray-800 text-sm font-semibold px-3 py-1 rounded-full">
               Sold
             </span>
           </div>
         )}
 
-        <span className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm text-indigo-700 text-xs font-medium px-2 py-0.5 rounded-full capitalize">
+        {/* Category badge */}
+        <span className="absolute top-2 left-2 z-10 bg-white/90 backdrop-blur-sm text-indigo-700 text-xs font-medium px-2 py-0.5 rounded-full capitalize">
           {category?.name || 'General'}
         </span>
+
+        {/* Image count badge */}
+        {hasMultiple && (
+          <span className="absolute top-2 right-2 z-10 bg-black/50 backdrop-blur-sm text-white text-xs font-medium px-2 py-0.5 rounded-full">
+            {activeIdx + 1}/{allImages.length}
+          </span>
+        )}
+
+        {/* Prev / Next buttons — show on hover if multiple images */}
+        {hasMultiple && hovered && !isSold && (
+          <>
+            <button
+              onClick={goPrev}
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-700 hover:bg-white hover:shadow-lg transition-all duration-150 hover:scale-110"
+              aria-label="Previous image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goNext}
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-700 hover:bg-white hover:shadow-lg transition-all duration-150 hover:scale-110"
+              aria-label="Next image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+
+        {/* Dot indicators */}
+        {hasMultiple && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5">
+            {allImages.map((_, i) => (
+              <button
+                key={i}
+                onClick={(e) => goTo(e, i)}
+                className={`rounded-full transition-all duration-200 ${
+                  i === activeIdx
+                    ? 'w-4 h-1.5 bg-white shadow'
+                    : 'w-1.5 h-1.5 bg-white/60 hover:bg-white/90'
+                }`}
+                aria-label={`Image ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Scroll hint — shown briefly on first hover */}
+        {hasMultiple && hovered && (
+          <div className="absolute bottom-7 right-2 z-10 text-[10px] text-white/70 font-medium pointer-events-none">
+            scroll to browse
+          </div>
+        )}
       </div>
 
       {/* Body */}

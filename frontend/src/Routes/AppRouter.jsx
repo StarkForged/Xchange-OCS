@@ -7,6 +7,8 @@ import HomePage from '../pages/home/HomePage'
 import ListingsPage from '../pages/listings/ListingsPage'
 import CreateListingPage from '../pages/listings/CreateListingPage'
 import ListingDetailPage from '../pages/listings/ListingDetailPage'
+import ChatPage from '../pages/chat/ChatPage'
+import ChatDashboard from '../pages/chat/ChatDashboard'
 
 export default function AppRouter() {
   return (
@@ -21,6 +23,8 @@ export default function AppRouter() {
             <Route path="/listings" element={<ListingsPage />} />
             <Route path="/listings/:id" element={<ListingDetailPage />} />
             <Route path="/create-listing" element={<CreateListingPage />} />
+            <Route path="/chat" element={<ChatDashboard />} />
+            <Route path="/chat/:listingId" element={<ChatPage />} />
           </Route>
         </Route>
 
