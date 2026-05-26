@@ -50,13 +50,16 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
-  const [listing, setListing]     = useState(null)
-  const [messages, setMessages]   = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [inputText, setInputText] = useState('')
+  const [listing, setListing]         = useState(null)
+  const [messages, setMessages]       = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [inputText, setInputText]     = useState('')
+  const [sellerOnline, setSellerOnline] = useState(false)
+  const [sellerTyping, setSellerTyping] = useState(false)
 
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const bottomRef    = useRef(null)
+  const inputRef     = useRef(null)
+  const typingTimer  = useRef(null)
 
   /* ── Load listing + messages in parallel ── */
   useEffect(() => {
@@ -93,17 +96,36 @@ export default function ChatPage() {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
 
-  /* ── Socket: join room + receive real-time messages ── */
+  /* ── Socket: join room + receive messages + presence + typing ── */
   useEffect(() => {
     if (loading) return
     const socket = getSocket()
     if (!socket.connected) socket.connect()
+
+    socket.emit('register', { userId: user?._id })
     socket.emit('join_chat', { listingId })
-    const onReceive = (message) => setMessages((prev) => [...prev, message])
-    socket.on('receive_message', onReceive)
+
+    const seller = listing?.seller
+
+    const onReceive      = (msg)    => setMessages((prev) => [...prev, msg])
+    const onOnline       = (userId) => { if (userId === seller) setSellerOnline(true) }
+    const onOffline      = (userId) => { if (userId === seller) setSellerOnline(false) }
+    const onTyping       = (userId) => { if (userId === seller) setSellerTyping(true) }
+    const onStopTyping   = (userId) => { if (userId === seller) setSellerTyping(false) }
+
+    socket.on('receive_message',   onReceive)
+    socket.on('user_online',       onOnline)
+    socket.on('user_offline',      onOffline)
+    socket.on('user_typing',       onTyping)
+    socket.on('user_stop_typing',  onStopTyping)
+
     return () => {
       socket.emit('leave_chat', { listingId })
-      socket.off('receive_message', onReceive)
+      socket.off('receive_message',  onReceive)
+      socket.off('user_online',      onOnline)
+      socket.off('user_offline',     onOffline)
+      socket.off('user_typing',      onTyping)
+      socket.off('user_stop_typing', onStopTyping)
     }
   }, [listingId, loading])
 
@@ -124,6 +146,8 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, newMsg])
     setInputText('')
     inputRef.current?.focus()
+    clearTimeout(typingTimer.current)
+    getSocket().emit('stop_typing', { listingId, userId: user._id })
     sendMessage(listingId, { senderId: user._id, text })
     getSocket().emit('send_message', { listingId, message: newMsg })
   }
@@ -133,6 +157,17 @@ export default function ChatPage() {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  const handleInputChange = (e) => {
+    setInputText(e.target.value)
+    if (!user || !listing) return
+    const socket = getSocket()
+    socket.emit('typing', { listingId, userId: user._id })
+    clearTimeout(typingTimer.current)
+    typingTimer.current = setTimeout(() => {
+      socket.emit('stop_typing', { listingId, userId: user._id })
+    }, 1500)
   }
 
   const isMine     = (msg) => msg.senderId !== listing?.seller
@@ -171,14 +206,18 @@ export default function ChatPage() {
             </svg>
           </button>
 
-          {/* Seller avatar + online dot */}
+          {/* Seller avatar + presence dot */}
           <div className="relative flex-shrink-0">
             <img
               src={defaultAvatar}
               alt="Seller"
               className="w-10 h-10 rounded-full object-cover border border-gray-200"
             />
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white" />
+            <span className={`
+              absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white
+              transition-colors duration-300
+              ${sellerOnline ? 'bg-emerald-400' : 'bg-gray-300'}
+            `} />
           </div>
 
           {/* Seller name + status */}
@@ -186,7 +225,20 @@ export default function ChatPage() {
             <p className="font-bold text-gray-900 text-sm leading-tight truncate">
               {sellerName}
             </p>
-            <p className="text-xs text-emerald-600 font-medium">Online</p>
+            {sellerTyping ? (
+              <p className="text-xs text-indigo-500 font-medium flex items-center gap-1">
+                <span className="flex gap-0.5">
+                  <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+                Typing…
+              </p>
+            ) : (
+              <p className={`text-xs font-medium transition-colors duration-300 ${sellerOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                {sellerOnline ? 'Online' : 'Offline'}
+              </p>
+            )}
           </div>
 
           {/* Listing context */}
@@ -320,7 +372,7 @@ export default function ChatPage() {
             <textarea
               ref={inputRef}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder={`Message ${sellerName}…`}
               rows={1}
