@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import defaultImage from '../../assets/images/products/iphone13.jpg'
 
 const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')
@@ -29,9 +30,7 @@ export default function ListingCard({ listing }) {
     createdAt
   } = listing
 
-  const image =
-    images?.[0] ??
-    'https://placehold.co/400x300/f3f4f6/9ca3af?text=No+Image'
+  const image = images?.[0] ?? defaultImage
 
   const isSold = status === 'sold'
   const sellerId = typeof seller === 'string' ? seller.replace('user_', '#') : '?'

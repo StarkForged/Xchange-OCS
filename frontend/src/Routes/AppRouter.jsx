@@ -6,6 +6,7 @@ import RegisterPage from '../pages/auth/RegisterPage'
 import HomePage from '../pages/home/HomePage'
 import ListingsPage from '../pages/listings/ListingsPage'
 import CreateListingPage from '../pages/listings/CreateListingPage'
+import ListingDetailPage from '../pages/listings/ListingDetailPage'
 
 export default function AppRouter() {
   return (
@@ -18,6 +19,7 @@ export default function AppRouter() {
           <Route element={<MainLayout />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/listings" element={<ListingsPage />} />
+            <Route path="/listings/:id" element={<ListingDetailPage />} />
             <Route path="/create-listing" element={<CreateListingPage />} />
           </Route>
         </Route>
