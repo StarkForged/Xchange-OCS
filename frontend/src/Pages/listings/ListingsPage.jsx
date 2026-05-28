@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import ListingCard from '../../components/listings/ListingCard'
 import { getListings } from '../../features/listings/listings.service'
 import { categories } from '../../mock/categories'
@@ -7,14 +8,16 @@ const inputCls =
   'border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition'
 
 export default function ListingsPage() {
+  const [searchParams] = useSearchParams()
+
   const [listings, setListings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
 
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [category, setCategory] = useState('all')
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get('q') || '')
+  const [category, setCategory] = useState(() => searchParams.get('cat') || 'all')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState('latest')
