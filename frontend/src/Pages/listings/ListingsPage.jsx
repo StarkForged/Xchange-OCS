@@ -85,7 +85,6 @@ export default function ListingsPage() {
             </span>
             <input
               type="text"
-              disabled={loading}
               placeholder="Search listings..."
               value={search}
               onChange={(e) => setSearch(e.target.value.trimStart())}

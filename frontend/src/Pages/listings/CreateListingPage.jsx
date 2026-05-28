@@ -109,8 +109,9 @@ export default function CreateListingPage() {
 
   const [form, setForm] = useState(initialForm)
   const [attributes, setAttributes] = useState({})
+  const [imageFiles, setImageFiles]       = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
-  const [coverIndex, setCoverIndex] = useState(0)
+  const [coverIndex, setCoverIndex]       = useState(0)
   const [areaSelect, setAreaSelect] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
@@ -177,12 +178,18 @@ export default function CreateListingPage() {
 
   // --- Images + cover ---
   const handleImages = (e) => {
-    const files = Array.from(e.target.files)
-    const previews = files.map((f) => URL.createObjectURL(f))
-    setImagePreviews((prev) => [...prev, ...previews].slice(0, 5))
+    const incoming = Array.from(e.target.files)
+    setImageFiles((prev)    => [...prev, ...incoming].slice(0, 5))
+    setImagePreviews((prev) => [
+      ...prev,
+      ...incoming.map((f) => URL.createObjectURL(f)),
+    ].slice(0, 5))
+    // reset the input so the same file can be re-selected if needed
+    e.target.value = ''
   }
 
   const removeImage = (index) => {
+    setImageFiles((prev)    => prev.filter((_, i) => i !== index))
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
     setCoverIndex((prev) => {
       if (prev === index) return 0
@@ -210,25 +217,25 @@ export default function CreateListingPage() {
     const errs = validate()
     if (Object.keys(errs).length) { setErrors(errs); return }
 
-    // put cover image first
-    const orderedImages =
-      imagePreviews.length > 0
-        ? [imagePreviews[coverIndex], ...imagePreviews.filter((_, i) => i !== coverIndex)]
+    // put cover file first so the backend/Cloudinary preserves the order
+    const orderedFiles =
+      imageFiles.length > 0
+        ? [imageFiles[coverIndex], ...imageFiles.filter((_, i) => i !== coverIndex)]
         : []
 
     setLoading(true)
     try {
       await createListing({
-        title: form.title.trim(),
+        title:       form.title.trim(),
         description: form.description.trim(),
-        price: { amount: Number(form.price.amount), negotiable: form.price.negotiable },
-        category: form.category,
+        price:       { amount: Number(form.price.amount), negotiable: form.price.negotiable },
+        category:    form.category,
         attributes,
-        images: orderedImages,
+        images:      orderedFiles,
         location: {
           state: form.location.state,
-          city: form.location.city,
-          area: form.location.area,
+          city:  form.location.city,
+          area:  form.location.area,
         },
       })
       navigate('/listings')
