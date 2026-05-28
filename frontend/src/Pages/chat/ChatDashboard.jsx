@@ -23,8 +23,15 @@ const timeAgo = (ts) => {
 }
 
 const formatSellerName = (seller) => {
-  if (typeof seller !== 'string') return 'Seller'
-  return `Seller #${seller.replace('user_', '')}`
+  if (!seller) return 'Seller'
+  if (typeof seller === 'object') return seller.name || 'Seller'
+  return 'Seller'
+}
+
+const getSellerId = (seller) => {
+  if (!seller) return null
+  if (typeof seller === 'object') return String(seller._id)
+  return seller
 }
 
 const formatTime = (ts) => {
@@ -237,12 +244,12 @@ export default function ChatDashboard() {
   }
 
   // ── Derived ──
-  const isMine       = (msg) => msg.senderId !== activeListing?.seller
-  const isUnread     = (c)   => c.lastMessage?.senderId === c.listing?.seller
+  const isMine       = (msg) => msg.senderId !== getSellerId(activeListing?.seller)
+  const isUnread     = (c)   => c.lastMessage?.senderId === getSellerId(c.listing?.seller)
   const getPreview   = (c)   => {
     const m = c.lastMessage
     if (!m) return ''
-    return m.senderId === c.listing?.seller ? m.text : `You: ${m.text}`
+    return m.senderId === getSellerId(c.listing?.seller) ? m.text : `You: ${m.text}`
   }
 
   const grouped     = buildGroups(activeMessages)

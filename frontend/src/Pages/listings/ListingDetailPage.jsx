@@ -16,8 +16,9 @@ const timeAgo = (dateStr) => {
 }
 
 const formatSellerName = (seller) => {
-  if (typeof seller !== 'string') return 'Unknown Seller'
-  return `Seller #${seller.replace('user_', '')}`
+  if (!seller) return 'Unknown Seller'
+  if (typeof seller === 'object') return seller.name || 'Unknown Seller'
+  return 'Unknown Seller'
 }
 
 const formatAttributeKey = (key) =>
@@ -290,7 +291,7 @@ export default function ListingDetailPage() {
             <div className="flex items-center gap-3">
               <div className="relative flex-shrink-0">
                 <img
-                  src={defaultAvatar}
+                  src={typeof seller === 'object' && seller?.profileImage ? seller.profileImage : defaultAvatar}
                   alt="Seller"
                   className="w-11 h-11 rounded-full object-cover border-2 border-indigo-100 shadow-sm"
                 />
@@ -306,7 +307,9 @@ export default function ListingDetailPage() {
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-[10px] text-gray-400 mb-0.5">Joined</p>
-                <p className="text-xs font-semibold text-gray-600">{timeAgo(createdAt)}</p>
+                <p className="text-xs font-semibold text-gray-600">
+                  {timeAgo(typeof seller === 'object' ? seller?.createdAt : createdAt)}
+                </p>
               </div>
             </div>
           </div>

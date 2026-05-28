@@ -4,19 +4,103 @@ import { categories } from '../../mock/categories'
 import { createListing } from '../../features/listings/listings.service'
 import useAuthStore from '../../store/auth.Store'
 
-const INDIAN_STATES = [
-  'Andhra Pradesh', 'Delhi', 'Goa', 'Gujarat', 'Haryana',
-  'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra',
-  'Punjab', 'Rajasthan', 'Tamil Nadu', 'Telangana',
-  'Uttar Pradesh', 'West Bengal',
-]
+const LOCATION_DATA = {
+  'Andhra Pradesh': {
+    Visakhapatnam: ['MVP Colony', 'Gajuwaka', 'Rushikonda', 'Dwaraka Nagar', 'Seethammadhara'],
+    Vijayawada: ['Benz Circle', 'Governorpet', 'Labbipet', 'Auto Nagar', 'MG Road'],
+    Guntur: ['Brodipet', 'Arundelpet', 'Nagarampalem', 'Kothapet'],
+  },
+  Delhi: {
+    'New Delhi': ['Connaught Place', 'Karol Bagh', 'Saket', 'Rohini', 'Dwarka', 'Pitampura'],
+    'South Delhi': ['Lajpat Nagar', 'Greater Kailash', 'Malviya Nagar', 'Hauz Khas', 'Sarita Vihar'],
+    'East Delhi': ['Laxmi Nagar', 'Mayur Vihar', 'Patparganj', 'Preet Vihar'],
+    'West Delhi': ['Rajouri Garden', 'Janakpuri', 'Tilak Nagar', 'Uttam Nagar'],
+  },
+  Goa: {
+    Panaji: ['Fontainhas', 'Miramar', 'Caranzalem', 'Dona Paula'],
+    Margao: ['Fatorda', 'Aquem', 'Gogol'],
+    Mapusa: ['Calangute', 'Anjuna', 'Vagator', 'Porvorim'],
+  },
+  Gujarat: {
+    Ahmedabad: ['Navrangpura', 'Vastrapur', 'Satellite', 'Maninagar', 'Bopal', 'SG Highway', 'Prahlad Nagar'],
+    Surat: ['Adajan', 'Vesu', 'Pal', 'Athwa', 'Katargam', 'Udhna'],
+    Vadodara: ['Alkapuri', 'Fatehgunj', 'Manjalpur', 'Gotri', 'Karelibaug'],
+    Rajkot: ['Race Course', 'Kalawad Road', 'Raiya Road', 'Aji Dam Road'],
+  },
+  Haryana: {
+    Gurugram: ['DLF Phase 1', 'Cyber City', 'Sohna Road', 'Golf Course Road', 'Sector 14', 'MG Road'],
+    Faridabad: ['Sector 21', 'NIT Faridabad', 'Sector 15', 'Old Faridabad'],
+    Ambala: ['Ambala City', 'Ambala Cantt', 'Model Town'],
+    Panipat: ['Sector 11', 'Sector 12', 'Tehsil Camp'],
+  },
+  Karnataka: {
+    Bengaluru: ['Koramangala', 'Indiranagar', 'Whitefield', 'HSR Layout', 'Electronic City', 'Jayanagar', 'Marathahalli', 'Bannerghatta Road'],
+    Mysuru: ['Vijayanagar', 'Kuvempunagar', 'Gokulam', 'Saraswathipuram', 'Hebbal'],
+    Mangaluru: ['Hampankatta', 'Balmatta', 'Kadri', 'Kankanady'],
+    Hubballi: ['Vidyanagar', 'Gokul Road', 'Navanagar'],
+  },
+  Kerala: {
+    Kochi: ['Ernakulam', 'Kakkanad', 'Edapally', 'Thripunithura', 'Aluva', 'Kaloor'],
+    Thiruvananthapuram: ['Kowdiar', 'Vazhuthacaud', 'Pattom', 'Kesavadasapuram', 'Sreekaryam'],
+    Kozhikode: ['Calicut Beach', 'Mavoor Road', 'Palayam', 'Westhill'],
+    Thrissur: ['Round South', 'Ayyanthole', 'Punkunnam'],
+  },
+  'Madhya Pradesh': {
+    Bhopal: ['MP Nagar', 'Arera Colony', 'Kolar Road', 'Bittan Market', 'Shahpura'],
+    Indore: ['Vijay Nagar', 'Palasia', 'Sapna Sangeeta', 'Geeta Bhawan', 'Rajwada', 'MR-9'],
+    Jabalpur: ['Napier Town', 'Civil Lines', 'Gorakhpur', 'Adhartal'],
+    Gwalior: ['Lashkar', 'Morena Road', 'City Centre'],
+  },
+  Maharashtra: {
+    Mumbai: ['Andheri', 'Bandra', 'Dadar', 'Kurla', 'Borivali', 'Worli', 'Powai', 'Juhu', 'Malad'],
+    Pune: ['Kothrud', 'Hadapsar', 'Wakad', 'Baner', 'Hinjewadi', 'Aundh', 'Koregaon Park', 'Viman Nagar'],
+    Nagpur: ['Dharampeth', 'Sadar', 'Sitabuldi', 'Manish Nagar', 'Wardha Road', 'Shankar Nagar'],
+    Nashik: ['College Road', 'Gangapur Road', 'Indira Nagar', 'Panchvati'],
+  },
+  Punjab: {
+    Chandigarh: ['Sector 17', 'Sector 22', 'Sector 35', 'Sector 8', 'Sector 26', 'Mohali Phase 7'],
+    Ludhiana: ['Model Town', 'Sarabha Nagar', 'BRS Nagar', 'Dugri'],
+    Amritsar: ['Lawrence Road', 'Ranjit Avenue', 'Green Avenue', 'Majitha Road'],
+    Jalandhar: ['Model Town', 'Nakodar Road', 'Guru Nanak Pura'],
+  },
+  Rajasthan: {
+    Jaipur: ['Malviya Nagar', 'Vaishali Nagar', 'C-Scheme', 'Tonk Road', 'Mansarovar', 'Jagatpura'],
+    Udaipur: ['Hiran Magri', 'Fateh Sagar', 'Sukhadia Circle', 'Sector 11'],
+    Jodhpur: ['Paota', 'Ratanada', 'Shastri Nagar', 'Sardarpura'],
+    Kota: ['Talwandi', 'Vigyan Nagar', 'Rangbari'],
+  },
+  'Tamil Nadu': {
+    Chennai: ['Anna Nagar', 'T. Nagar', 'Velachery', 'OMR', 'Adyar', 'Porur', 'Tambaram', 'Perambur'],
+    Coimbatore: ['RS Puram', 'Gandhipuram', 'Peelamedu', 'Saibaba Colony', 'Singanallur'],
+    Madurai: ['Anna Nagar', 'KK Nagar', 'Mattuthavani', 'Bypass Road'],
+    Salem: ['Fairlands', 'Hasthampatti', 'Suramangalam'],
+  },
+  Telangana: {
+    Hyderabad: ['Banjara Hills', 'Jubilee Hills', 'Gachibowli', 'Hitech City', 'Madhapur', 'Kondapur', 'Secunderabad', 'Kukatpally'],
+    Warangal: ['Hanamkonda', 'Kazipet', 'Subedari', 'Warangal Urban'],
+    Nizamabad: ['Dichpally', 'Jakranpally', 'Bodhan'],
+  },
+  'Uttar Pradesh': {
+    Lucknow: ['Gomti Nagar', 'Hazratganj', 'Alambagh', 'Indira Nagar', 'Aliganj', 'Vikas Nagar'],
+    Kanpur: ['Civil Lines', 'Kidwai Nagar', 'Kakadeo', 'Harsh Nagar', 'Swaroop Nagar'],
+    Agra: ['Taj Ganj', 'Sikandra', 'Kamla Nagar', 'Sanjay Place', 'Bodla'],
+    Varanasi: ['Sigra', 'Lanka', 'Assi Ghat', 'Bhelupur', 'Nadesar'],
+    Noida: ['Sector 18', 'Sector 62', 'Sector 137', 'Greater Noida', 'Sector 50'],
+    Prayagraj: ['Civil Lines', 'George Town', 'Naini', 'Allapur'],
+  },
+  'West Bengal': {
+    Kolkata: ['Park Street', 'Salt Lake', 'Howrah', 'Behala', 'Dum Dum', 'New Town', 'Ballygunge'],
+    Siliguri: ['Sevoke Road', 'Hill Cart Road', 'Pradhan Nagar', 'Matigara'],
+    Asansol: ['Burnpur', 'Raniganj', 'Kulti'],
+  },
+}
 
 const initialForm = {
   title: '',
   description: '',
   price: { amount: '', negotiable: false },
   category: null,
-  location: { city: '', state: '' },
+  location: { state: '', city: '', area: '' },
 }
 
 export default function CreateListingPage() {
@@ -26,13 +110,19 @@ export default function CreateListingPage() {
   const [form, setForm] = useState(initialForm)
   const [attributes, setAttributes] = useState({})
   const [imagePreviews, setImagePreviews] = useState([])
+  const [coverIndex, setCoverIndex] = useState(0)
+  const [areaSelect, setAreaSelect] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
 
   const selectedCategory = categories.find((c) => c.id === form.category?.id)
+  const citiesForState = form.location.state ? Object.keys(LOCATION_DATA[form.location.state] || {}) : []
+  const areasForCity =
+    form.location.state && form.location.city
+      ? LOCATION_DATA[form.location.state]?.[form.location.city] || []
+      : []
 
-  // --- Handlers ---
-
+  // --- Generic deep-set helper ---
   const set = (path, value) => {
     setForm((prev) => {
       const updated = { ...prev }
@@ -48,6 +138,7 @@ export default function CreateListingPage() {
     setErrors((e) => ({ ...e, [path]: undefined }))
   }
 
+  // --- Category ---
   const handleCategoryChange = (e) => {
     const cat = categories.find((c) => c.id === e.target.value)
     setForm((prev) => ({ ...prev, category: cat ? { id: cat.id, name: cat.name } : null }))
@@ -59,6 +150,32 @@ export default function CreateListingPage() {
     setAttributes((prev) => ({ ...prev, [name]: value }))
   }
 
+  // --- Location cascades ---
+  const handleStateChange = (e) => {
+    const state = e.target.value
+    setForm((prev) => ({ ...prev, location: { state, city: '', area: '' } }))
+    setAreaSelect('')
+    setErrors((e) => ({ ...e, 'location.state': undefined, 'location.city': undefined }))
+  }
+
+  const handleCityChange = (e) => {
+    const city = e.target.value
+    setForm((prev) => ({ ...prev, location: { ...prev.location, city, area: '' } }))
+    setAreaSelect('')
+    setErrors((e) => ({ ...e, 'location.city': undefined }))
+  }
+
+  const handleAreaChange = (e) => {
+    const val = e.target.value
+    setAreaSelect(val)
+    if (val !== 'Others') {
+      setForm((prev) => ({ ...prev, location: { ...prev.location, area: val } }))
+    } else {
+      setForm((prev) => ({ ...prev, location: { ...prev.location, area: '' } }))
+    }
+  }
+
+  // --- Images + cover ---
   const handleImages = (e) => {
     const files = Array.from(e.target.files)
     const previews = files.map((f) => URL.createObjectURL(f))
@@ -67,10 +184,14 @@ export default function CreateListingPage() {
 
   const removeImage = (index) => {
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
+    setCoverIndex((prev) => {
+      if (prev === index) return 0
+      if (prev > index) return prev - 1
+      return prev
+    })
   }
 
   // --- Validation ---
-
   const validate = () => {
     const errs = {}
     if (!form.title.trim()) errs.title = 'Title is required'
@@ -78,17 +199,22 @@ export default function CreateListingPage() {
     if (!form.price.amount || isNaN(form.price.amount) || Number(form.price.amount) <= 0)
       errs['price.amount'] = 'Enter a valid price'
     if (!form.category) errs.category = 'Select a category'
-    if (!form.location.city.trim()) errs['location.city'] = 'City is required'
     if (!form.location.state) errs['location.state'] = 'State is required'
+    if (!form.location.city) errs['location.city'] = 'City is required'
     return errs
   }
 
   // --- Submit ---
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length) { setErrors(errs); return }
+
+    // put cover image first
+    const orderedImages =
+      imagePreviews.length > 0
+        ? [imagePreviews[coverIndex], ...imagePreviews.filter((_, i) => i !== coverIndex)]
+        : []
 
     setLoading(true)
     try {
@@ -98,9 +224,12 @@ export default function CreateListingPage() {
         price: { amount: Number(form.price.amount), negotiable: form.price.negotiable },
         category: form.category,
         attributes,
-        images: imagePreviews,
-        seller: user?._id || 'user_unknown',
-        location: { city: form.location.city.trim(), state: form.location.state },
+        images: orderedImages,
+        location: {
+          state: form.location.state,
+          city: form.location.city,
+          area: form.location.area,
+        },
       })
       navigate('/listings')
     } catch (err) {
@@ -112,7 +241,6 @@ export default function CreateListingPage() {
   }
 
   // --- Field helpers ---
-
   const inputCls = (key) =>
     `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
       errors[key] ? 'border-red-400' : 'border-gray-300'
@@ -228,7 +356,6 @@ export default function CreateListingPage() {
             {errors.category && <p className="text-xs text-red-500 mt-1">{errors.category}</p>}
           </div>
 
-          {/* Dynamic Attributes */}
           {selectedCategory?.fields?.length > 0 && (
             <div className="grid grid-cols-2 gap-3">
               {selectedCategory.fields.map((field) => (
@@ -245,39 +372,87 @@ export default function CreateListingPage() {
         <section className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Location</h2>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* State */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+            <select
+              value={form.location.state}
+              onChange={handleStateChange}
+              className={inputCls('location.state')}
+            >
+              <option value=''>Select state</option>
+              {Object.keys(LOCATION_DATA).sort().map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            {errors['location.state'] && (
+              <p className="text-xs text-red-500 mt-1">{errors['location.state']}</p>
+            )}
+          </div>
+
+          {/* City — appears after state is selected */}
+          {form.location.state && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-              <input
-                type="text"
-                placeholder="e.g. Mumbai"
-                value={form.location.city}
-                onChange={(e) => set('location.city', e.target.value)}
-                className={inputCls('location.city')}
-              />
-              {errors['location.city'] && <p className="text-xs text-red-500 mt-1">{errors['location.city']}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
               <select
-                value={form.location.state}
-                onChange={(e) => set('location.state', e.target.value)}
-                className={inputCls('location.state')}
+                value={form.location.city}
+                onChange={handleCityChange}
+                className={inputCls('location.city')}
               >
-                <option value=''>Select state</option>
-                {INDIAN_STATES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                <option value=''>Select city</option>
+                {citiesForState.map((c) => (
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-              {errors['location.state'] && <p className="text-xs text-red-500 mt-1">{errors['location.state']}</p>}
+              {errors['location.city'] && (
+                <p className="text-xs text-red-500 mt-1">{errors['location.city']}</p>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Area — appears after city is selected */}
+          {form.location.city && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Area / Locality
+                <span className="text-gray-400 font-normal ml-1">(optional)</span>
+              </label>
+              <select
+                value={areaSelect}
+                onChange={handleAreaChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value=''>Select area</option>
+                {areasForCity.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+                <option value='Others'>Others</option>
+              </select>
+
+              {areaSelect === 'Others' && (
+                <input
+                  type="text"
+                  placeholder="Enter your area / locality name"
+                  value={form.location.area}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      location: { ...prev.location, area: e.target.value },
+                    }))
+                  }
+                  className="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  autoFocus
+                />
+              )}
+            </div>
+          )}
         </section>
 
         {/* Images */}
         <section className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Images (up to 5)</h2>
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            Images <span className="text-gray-400 font-normal normal-case">(up to 5)</span>
+          </h2>
 
           <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl py-6 cursor-pointer hover:border-indigo-400 transition-colors">
             <span className="text-sm text-gray-500">Click to upload photos</span>
@@ -292,19 +467,42 @@ export default function CreateListingPage() {
           </label>
 
           {imagePreviews.length > 0 && (
-            <div className="flex flex-wrap gap-3">
-              {imagePreviews.map((src, i) => (
-                <div key={i} className="relative w-20 h-20">
-                  <img src={src} alt="" className="w-full h-full object-cover rounded-lg" />
-                  <button
-                    type="button"
-                    onClick={() => removeImage(i)}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center leading-none"
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500">
+                Click an image to set it as the{' '}
+                <span className="font-semibold text-indigo-600">cover photo</span>.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {imagePreviews.map((src, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setCoverIndex(i)}
+                    className={`relative w-20 h-20 cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-200 ${
+                      coverIndex === i
+                        ? 'border-indigo-500 ring-2 ring-indigo-200 scale-105'
+                        : 'border-gray-200 hover:border-indigo-300 hover:scale-105'
+                    }`}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <img src={src} alt="" className="w-full h-full object-cover" />
+
+                    {/* Cover badge */}
+                    {coverIndex === i && (
+                      <div className="absolute inset-x-0 bottom-0 bg-indigo-600/90 text-white text-[9px] font-bold text-center py-0.5 tracking-wider">
+                        COVER
+                      </div>
+                    )}
+
+                    {/* Remove button */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeImage(i) }}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center leading-none shadow"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>

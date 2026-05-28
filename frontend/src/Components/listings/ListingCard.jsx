@@ -41,7 +41,7 @@ export default function ListingCard({ listing }) {
   const scrollTimerRef = useRef(null)
 
   const isSold = status === 'sold'
-  const sellerId = typeof seller === 'string' ? seller.replace('user_', '#') : '?'
+  const sellerName = typeof seller === 'object' ? (seller?.name || 'Seller') : 'Seller'
 
   const goNext = useCallback((e) => {
     e?.preventDefault()
@@ -212,7 +212,7 @@ export default function ListingCard({ listing }) {
         {/* Footer */}
         <div className="mt-auto flex items-center justify-between text-xs text-gray-400">
           <div className="flex items-center gap-3">
-            <span>Seller {sellerId}</span>
+            <span>{sellerName}</span>
             <span>👁 {viewsCount ?? 0}</span>
             <span>♡ {favoritesCount ?? 0}</span>
           </div>

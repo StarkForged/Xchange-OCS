@@ -11,8 +11,15 @@ const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')
 
 const formatSellerName = (seller) => {
-  if (typeof seller !== 'string') return 'Seller'
-  return `Seller #${seller.replace('user_', '')}`
+  if (!seller) return 'Seller'
+  if (typeof seller === 'object') return seller.name || 'Seller'
+  return 'Seller'
+}
+
+const getSellerId = (seller) => {
+  if (!seller) return null
+  if (typeof seller === 'object') return String(seller._id)
+  return seller
 }
 
 const formatTime = (ts) => {
@@ -105,13 +112,13 @@ export default function ChatPage() {
     socket.emit('register', { userId: user?._id })
     socket.emit('join_chat', { listingId })
 
-    const seller = listing?.seller
+    const sellerIdVal = getSellerId(listing?.seller)
 
     const onReceive      = (msg)    => setMessages((prev) => [...prev, msg])
-    const onOnline       = (userId) => { if (userId === seller) setSellerOnline(true) }
-    const onOffline      = (userId) => { if (userId === seller) setSellerOnline(false) }
-    const onTyping       = (userId) => { if (userId === seller) setSellerTyping(true) }
-    const onStopTyping   = (userId) => { if (userId === seller) setSellerTyping(false) }
+    const onOnline       = (userId) => { if (userId === sellerIdVal) setSellerOnline(true) }
+    const onOffline      = (userId) => { if (userId === sellerIdVal) setSellerOnline(false) }
+    const onTyping       = (userId) => { if (userId === sellerIdVal) setSellerTyping(true) }
+    const onStopTyping   = (userId) => { if (userId === sellerIdVal) setSellerTyping(false) }
 
     socket.on('receive_message',   onReceive)
     socket.on('user_online',       onOnline)
@@ -170,7 +177,7 @@ export default function ChatPage() {
     }, 1500)
   }
 
-  const isMine     = (msg) => msg.senderId !== listing?.seller
+  const isMine     = (msg) => msg.senderId !== getSellerId(listing?.seller)
   const sellerName = formatSellerName(listing?.seller)
   const listingImg = listing?.images?.[0] ?? defaultImage
   const grouped    = groupMessages(messages)
