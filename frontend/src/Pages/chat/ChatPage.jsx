@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getListingById } from '../../features/listings/listings.service'
-import { getMessages, sendMessage } from '../../features/chat/chat.service'
+import { getOrCreateChat, getMessages } from '../../features/chat/chat.service'
 import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
@@ -57,6 +57,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
+  const [chatId, setChatId]           = useState(null)
   const [listing, setListing]         = useState(null)
   const [messages, setMessages]       = useState([])
   const [loading, setLoading]         = useState(true)
@@ -68,22 +69,26 @@ export default function ChatPage() {
   const inputRef     = useRef(null)
   const typingTimer  = useRef(null)
 
-  /* ── Load listing + messages in parallel ── */
+  /* ── Get/create chat, then load listing + history in parallel ── */
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       setLoading(true)
       try {
+        const chat = await getOrCreateChat(listingId)
+        if (cancelled) return
+        setChatId(String(chat._id))
+
         const [listingData, msgs] = await Promise.all([
           getListingById(listingId),
-          getMessages(listingId),
+          getMessages(String(chat._id)),
         ])
         if (!cancelled) {
           setListing(listingData)
           setMessages(msgs)
         }
-      } catch {
-        // mock never throws network errors
+      } catch (err) {
+        console.error('[ChatPage] load error:', err)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -155,8 +160,7 @@ export default function ChatPage() {
     inputRef.current?.focus()
     clearTimeout(typingTimer.current)
     getSocket().emit('stop_typing', { listingId, userId: user._id })
-    sendMessage(listingId, { senderId: user._id, text })
-    getSocket().emit('send_message', { listingId, message: newMsg })
+    getSocket().emit('send_message', { listingId, chatId, message: newMsg })
   }
 
   const handleKeyDown = (e) => {

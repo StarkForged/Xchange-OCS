@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
-import { getConversations, getMessages, sendMessage } from '../../features/chat/chat.service'
+import { getConversations, getMessages } from '../../features/chat/chat.service'
 import { getListingById } from '../../features/listings/listings.service'
 import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
@@ -112,6 +112,7 @@ export default function ChatDashboard() {
   const [conversations, setConversations] = useState([])
   const [loadingConvos, setLoadingConvos] = useState(true)
   const [activeId, setActiveId]           = useState(null)
+  const [activeChatId, setActiveChatId]   = useState(null)
 
   // Active chat
   const [activeListing, setActiveListing]     = useState(null)
@@ -159,7 +160,7 @@ export default function ChatDashboard() {
       try {
         const [listing, msgs] = await Promise.all([
           getListingById(activeId),
-          getMessages(activeId),
+          getMessages(activeChatId),
         ])
         if (!cancelled) {
           setActiveListing(listing)
@@ -225,8 +226,7 @@ export default function ChatDashboard() {
     setActiveMessages((prev) => [...prev, newMsg])
     setInputText('')
     inputRef.current?.focus()
-    sendMessage(activeId, { senderId: user._id, text })
-    getSocket().emit('send_message', { listingId: activeId, message: newMsg })
+    getSocket().emit('send_message', { listingId: activeId, chatId: activeChatId, message: newMsg })
 
     // Update sidebar preview
     setConversations((prev) =>
@@ -329,7 +329,7 @@ export default function ChatDashboard() {
             return (
               <button
                 key={convo.listingId}
-                onClick={() => setActiveId(convo.listingId)}
+                onClick={() => { setActiveId(convo.listingId); setActiveChatId(convo.chatId) }}
                 className={`
                   w-full flex items-center gap-3 px-4 py-3.5 text-left
                   border-l-[3px] transition-colors duration-150
