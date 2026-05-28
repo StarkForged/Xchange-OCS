@@ -1,0 +1,310 @@
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import useAuthStore from '../../store/auth.Store'
+import { getMyListingsAPI } from '../../api/listings.api'
+import { getChatsAPI } from '../../api/chat.api'
+import defaultAvatar from '../../assets/images/default-avatar.jpg'
+import defaultImage from '../../assets/images/products/iphone13.jpg'
+
+const timeAgo = (d) => {
+  if (!d) return ''
+  const days = Math.floor((Date.now() - new Date(d)) / 86400000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return `${days}d ago`
+}
+
+const formatPrice = (p) => p?.amount != null ? `₹${p.amount.toLocaleString('en-IN')}` : '—'
+
+function StatCard({ label, value, sub, icon, from, to, loading }) {
+  return (
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${from} ${to} p-5 shadow-sm hover:shadow-md transition-shadow duration-200`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-white/70 uppercase tracking-widest mb-1">{label}</p>
+          <p className="text-3xl font-black text-white leading-none">
+            {loading ? <span className="inline-block w-10 h-7 bg-white/20 rounded animate-pulse" /> : value}
+          </p>
+          <p className="text-xs text-white/60 mt-1.5 font-medium">{sub}</p>
+        </div>
+        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white flex-shrink-0">
+          {icon}
+        </div>
+      </div>
+      {/* subtle shine */}
+      <div className="absolute -bottom-4 -right-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
+    </div>
+  )
+}
+
+function QuickActionCard({ to, label, description, icon, accent }) {
+  return (
+    <Link
+      to={to}
+      className={`group flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}
+    >
+      <div className={`w-11 h-11 rounded-xl ${accent} flex items-center justify-center flex-shrink-0`}>
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900">{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+      </div>
+      <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
+  )
+}
+
+function ProfileCompletion({ user }) {
+  const checks = [
+    { label: 'Name added',         done: !!user?.name },
+    { label: 'Email verified',     done: !!user?.email },
+    { label: 'Profile photo',      done: !!(user?.profileImage && !user.profileImage.includes('default-avatar.png')) },
+    { label: 'Trust score earned', done: (user?.trustScore ?? 0) > 0 },
+    { label: 'First listing',      done: false }, // will be updated by parent
+  ]
+  const pct = Math.round((checks.filter((c) => c.done).length / checks.length) * 100)
+  const color = pct < 40 ? 'bg-rose-500' : pct < 70 ? 'bg-amber-500' : 'bg-emerald-500'
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Profile Completion</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Complete your profile to build trust</p>
+        </div>
+        <span className="text-2xl font-black text-gray-900">{pct}%</span>
+      </div>
+      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
+        <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="space-y-2">
+        {checks.map((c) => (
+          <div key={c.label} className="flex items-center gap-2.5">
+            <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${c.done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+              {c.done
+                ? <svg className="w-2.5 h-2.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+              }
+            </div>
+            <span className={`text-xs font-medium ${c.done ? 'text-gray-700' : 'text-gray-400'}`}>{c.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function DashboardOverview() {
+  const { user } = useAuthStore()
+  const [listings, setListings] = useState([])
+  const [chats, setChats]       = useState([])
+  const [loading, setLoading]   = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [lr, cr] = await Promise.all([getMyListingsAPI(), getChatsAPI()])
+        if (!cancelled) {
+          setListings(lr.listings || [])
+          setChats(cr.chats || [])
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  const totalListings  = listings.length
+  const activeListings = listings.filter((l) => l.status === 'active').length
+  const totalChats     = chats.length
+  const recentListings = listings.slice(0, 3)
+
+  return (
+    <div className="space-y-7 max-w-6xl">
+
+      {/* Page header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+        <p className="text-sm text-gray-400 mt-1">
+          Welcome back — here's what's happening with your marketplace activity.
+        </p>
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="My Listings"
+          value={totalListings}
+          sub="total posted"
+          from="from-indigo-500" to="to-violet-600"
+          loading={loading}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Active"
+          value={activeListings}
+          sub="live right now"
+          from="from-emerald-500" to="to-teal-600"
+          loading={loading}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Messages"
+          value={totalChats}
+          sub="conversations"
+          from="from-sky-500" to="to-blue-600"
+          loading={loading}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Trust Score"
+          value={user?.trustScore ?? 0}
+          sub="out of 100"
+          from="from-amber-500" to="to-orange-500"
+          loading={false}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+          }
+        />
+      </div>
+
+      {/* Mid row: Quick actions + Profile completion */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Quick actions */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-bold text-gray-900">Quick Actions</h2>
+          <QuickActionCard
+            to="/create-listing"
+            label="Post a New Listing"
+            description="List something you'd like to sell"
+            accent="bg-indigo-50 text-indigo-600"
+            icon={
+              <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            }
+          />
+          <QuickActionCard
+            to="/listings"
+            label="Browse Marketplace"
+            description="Discover items from other sellers"
+            accent="bg-emerald-50 text-emerald-600"
+            icon={
+              <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            }
+          />
+          <QuickActionCard
+            to="/dashboard/messages"
+            label="View Messages"
+            description={`${totalChats} active conversation${totalChats !== 1 ? 's' : ''}`}
+            accent="bg-sky-50 text-sky-600"
+            icon={
+              <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            }
+          />
+        </div>
+
+        <ProfileCompletion user={user} />
+      </div>
+
+      {/* Recent listings */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-gray-900">Recent Listings</h2>
+          <Link to="/dashboard/listings" className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
+            View all →
+          </Link>
+        </div>
+
+        {loading && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
+                <div className="aspect-[4/3] bg-gray-100 rounded-xl mb-3" />
+                <div className="h-3 bg-gray-100 rounded w-3/4 mb-2" />
+                <div className="h-3 bg-gray-100 rounded w-1/2" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && recentListings.length === 0 && (
+          <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-14 text-center">
+            <div className="text-4xl mb-3">📦</div>
+            <p className="text-sm font-semibold text-gray-700 mb-1">No listings yet</p>
+            <p className="text-xs text-gray-400 mb-4">Your posted listings will appear here</p>
+            <Link
+              to="/create-listing"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              Post your first listing →
+            </Link>
+          </div>
+        )}
+
+        {!loading && recentListings.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {recentListings.map((listing) => (
+              <Link
+                key={listing._id}
+                to={`/listings/${listing._id}`}
+                className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+              >
+                <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+                  <img
+                    src={listing.images?.[0] || defaultImage}
+                    alt={listing.title}
+                    className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+                  />
+                </div>
+                <div className="p-3.5">
+                  <p className="text-sm font-semibold text-gray-900 line-clamp-1">{listing.title}</p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-sm font-bold text-indigo-600">{formatPrice(listing.price)}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      listing.status === 'active'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : listing.status === 'sold'
+                        ? 'bg-gray-100 text-gray-500'
+                        : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {listing.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">{timeAgo(listing.createdAt)}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

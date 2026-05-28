@@ -20,6 +20,12 @@ export const getListingByIdAPI = async (id) => {
   return response.data
 }
 
+// GET /api/listings/mine  (requires auth)
+export const getMyListingsAPI = async () => {
+  const response = await api.get('/listings/mine')
+  return response.data
+}
+
 // POST /api/listings  — sends multipart/form-data so multer can parse files
 export const createListingAPI = async (data) => {
   const formData = new FormData()

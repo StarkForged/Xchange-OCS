@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getConversations, getMessages } from '../../features/chat/chat.service'
@@ -102,6 +102,17 @@ function EmptyPanel({ onBrowse }) {
   )
 }
 
+// Dedup messages by id, strip empty
+const dedup = (msgs) => {
+  const seen = new Set()
+  return msgs.filter((m) => {
+    if (!m?.id || !m?.text?.trim()) return false
+    if (seen.has(m.id)) return false
+    seen.add(m.id)
+    return true
+  })
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function ChatDashboard() {
@@ -120,8 +131,10 @@ export default function ChatDashboard() {
   const [loadingChat, setLoadingChat]         = useState(false)
   const [inputText, setInputText]             = useState('')
 
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const bottomRef   = useRef(null)
+  const inputRef    = useRef(null)
+  // Stable ref so socket effect can read chatId without being in deps
+  const activeChatIdRef = useRef(null)
 
   // ── Load conversation list ──
   useEffect(() => {
@@ -150,8 +163,11 @@ export default function ChatDashboard() {
   }, [])
 
   // ── Load chat when active conversation changes ──
+  // activeChatId is captured via ref so we can safely include activeId only
   useEffect(() => {
     if (!activeId) return
+    const chatId = activeChatIdRef.current
+    if (!chatId) return
     let cancelled = false
     const load = async () => {
       setLoadingChat(true)
@@ -160,11 +176,16 @@ export default function ChatDashboard() {
       try {
         const [listing, msgs] = await Promise.all([
           getListingById(activeId),
-          getMessages(activeChatId),
+          getMessages(chatId),
         ])
         if (!cancelled) {
           setActiveListing(listing)
-          setActiveMessages(msgs)
+          // Merge: preserve any realtime messages that arrived during load
+          setActiveMessages((prev) => {
+            const dbIds = new Set(msgs.map((m) => m.id))
+            const extras = prev.filter((m) => m.id && !dbIds.has(m.id))
+            return dedup([...msgs, ...extras])
+          })
         }
       } catch {
         // silent
@@ -174,7 +195,7 @@ export default function ChatDashboard() {
     }
     load()
     return () => { cancelled = true }
-  }, [activeId])
+  }, [activeId, activeChatId])  // activeChatId as dep ensures re-load if it changes
 
   // ── Scroll on initial load ──
   useEffect(() => {
@@ -194,7 +215,8 @@ export default function ChatDashboard() {
     if (!socket.connected) socket.connect()
     socket.emit('join_chat', { listingId: activeId })
     const onReceive = (message) => {
-      setActiveMessages((prev) => [...prev, message])
+      if (!message?.id || !message?.text?.trim()) return
+      setActiveMessages((prev) => dedup([...prev, message]))
       setConversations((prev) =>
         prev.map((c) =>
           c.listingId === activeId ? { ...c, lastMessage: message } : c
@@ -214,19 +236,19 @@ export default function ChatDashboard() {
   }, [])
 
   // ── Send ──
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const text = inputText.trim()
-    if (!text || !user || !activeListing) return
+    if (!text || !user || !activeListing || !activeChatIdRef.current) return
     const newMsg = {
-      id: `msg_${Date.now()}`,
-      senderId: user._id,
+      id:        `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      senderId:  user._id,
       text,
       timestamp: new Date().toISOString(),
     }
-    setActiveMessages((prev) => [...prev, newMsg])
+    setActiveMessages((prev) => dedup([...prev, newMsg]))
     setInputText('')
     inputRef.current?.focus()
-    getSocket().emit('send_message', { listingId: activeId, chatId: activeChatId, message: newMsg })
+    getSocket().emit('send_message', { listingId: activeId, chatId: activeChatIdRef.current, message: newMsg })
 
     // Update sidebar preview
     setConversations((prev) =>
@@ -234,7 +256,7 @@ export default function ChatDashboard() {
         c.listingId === activeId ? { ...c, lastMessage: newMsg } : c
       )
     )
-  }
+  }, [inputText, user, activeListing, activeId])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -248,7 +270,7 @@ export default function ChatDashboard() {
   const isUnread     = (c)   => c.lastMessage?.senderId === getSellerId(c.listing?.seller)
   const getPreview   = (c)   => {
     const m = c.lastMessage
-    if (!m) return ''
+    if (!m?.text?.trim()) return 'No messages yet'
     return m.senderId === getSellerId(c.listing?.seller) ? m.text : `You: ${m.text}`
   }
 
@@ -329,7 +351,11 @@ export default function ChatDashboard() {
             return (
               <button
                 key={convo.listingId}
-                onClick={() => { setActiveId(convo.listingId); setActiveChatId(convo.chatId) }}
+                onClick={() => {
+                  setActiveId(convo.listingId)
+                  setActiveChatId(convo.chatId)
+                  activeChatIdRef.current = convo.chatId
+                }}
                 className={`
                   w-full flex items-center gap-3 px-4 py-3.5 text-left
                   border-l-[3px] transition-colors duration-150

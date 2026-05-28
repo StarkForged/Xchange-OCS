@@ -77,6 +77,18 @@ exports.getListingById = async (req, res, next) => {
   }
 }
 
+// GET /api/listings/mine  (protected)
+exports.getMyListings = async (req, res, next) => {
+  try {
+    const listings = await Listing.find({ seller: req.user._id })
+      .sort({ createdAt: -1 })
+      .lean()
+    res.json({ listings })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // POST /api/listings  (protected + multipart)
 exports.createListing = async (req, res, next) => {
   try {

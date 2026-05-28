@@ -30,7 +30,23 @@ const userSchema = new mongoose.Schema(
     },
     profileImage: {
       type: String,
-      default: '/assets/images/default-avatar.png',
+      default: '',
+    },
+    bio: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 300,
+    },
+    phone: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    location: {
+      type: String,
+      default: '',
+      trim: true,
     },
     trustScore: {
       type: Number,

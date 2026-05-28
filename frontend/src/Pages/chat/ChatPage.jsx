@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getListingById } from '../../features/listings/listings.service'
@@ -52,24 +52,37 @@ const groupMessages = (msgs) => {
   return items
 }
 
+// Dedup by id, drop messages with no text
+const dedup = (msgs) => {
+  const seen = new Set()
+  return msgs.filter((m) => {
+    if (!m?.id || !m?.text?.trim()) return false
+    if (seen.has(m.id)) return false
+    seen.add(m.id)
+    return true
+  })
+}
+
 export default function ChatPage() {
   const { listingId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
-  const [chatId, setChatId]           = useState(null)
-  const [listing, setListing]         = useState(null)
-  const [messages, setMessages]       = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [inputText, setInputText]     = useState('')
+  const [chatId, setChatId]             = useState(null)
+  const [listing, setListing]           = useState(null)
+  const [messages, setMessages]         = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [inputText, setInputText]       = useState('')
   const [sellerOnline, setSellerOnline] = useState(false)
   const [sellerTyping, setSellerTyping] = useState(false)
 
-  const bottomRef    = useRef(null)
-  const inputRef     = useRef(null)
-  const typingTimer  = useRef(null)
+  const bottomRef   = useRef(null)
+  const inputRef    = useRef(null)
+  const typingTimer = useRef(null)
+  // Keep chatId accessible in socket effect without adding it as a dep
+  const chatIdRef   = useRef(null)
 
-  /* ── Get/create chat, then load listing + history in parallel ── */
+  /* ── Get/create chat, then load listing + history ── */
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -77,15 +90,22 @@ export default function ChatPage() {
       try {
         const chat = await getOrCreateChat(listingId)
         if (cancelled) return
-        setChatId(String(chat._id))
+        const cid = String(chat._id)
+        setChatId(cid)
+        chatIdRef.current = cid
 
         const [listingData, msgs] = await Promise.all([
           getListingById(listingId),
-          getMessages(String(chat._id)),
+          getMessages(cid),
         ])
         if (!cancelled) {
           setListing(listingData)
-          setMessages(msgs)
+          // Merge: keep any realtime messages that arrived during loading
+          setMessages((prev) => {
+            const dbIds = new Set(msgs.map((m) => m.id))
+            const extras = prev.filter((m) => m.id && !dbIds.has(m.id))
+            return dedup([...msgs, ...extras])
+          })
         }
       } catch (err) {
         console.error('[ChatPage] load error:', err)
@@ -97,18 +117,18 @@ export default function ChatPage() {
     return () => { cancelled = true }
   }, [listingId])
 
-  /* ── Scroll to bottom on initial load ── */
+  /* ── Scroll to bottom on load ── */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [loading])
 
-  /* ── Smooth scroll when new message arrives ── */
+  /* ── Scroll on new message ── */
   useEffect(() => {
     if (messages.length > 0)
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
 
-  /* ── Socket: join room + receive messages + presence + typing ── */
+  /* ── Socket: join room + presence + typing ── */
   useEffect(() => {
     if (loading) return
     const socket = getSocket()
@@ -119,17 +139,20 @@ export default function ChatPage() {
 
     const sellerIdVal = getSellerId(listing?.seller)
 
-    const onReceive      = (msg)    => setMessages((prev) => [...prev, msg])
-    const onOnline       = (userId) => { if (userId === sellerIdVal) setSellerOnline(true) }
-    const onOffline      = (userId) => { if (userId === sellerIdVal) setSellerOnline(false) }
-    const onTyping       = (userId) => { if (userId === sellerIdVal) setSellerTyping(true) }
-    const onStopTyping   = (userId) => { if (userId === sellerIdVal) setSellerTyping(false) }
+    const onReceive    = (msg)    => {
+      if (!msg?.id || !msg?.text?.trim()) return
+      setMessages((prev) => dedup([...prev, msg]))
+    }
+    const onOnline     = (userId) => { if (userId === sellerIdVal) setSellerOnline(true) }
+    const onOffline    = (userId) => { if (userId === sellerIdVal) setSellerOnline(false) }
+    const onTyping     = (userId) => { if (userId === sellerIdVal) setSellerTyping(true) }
+    const onStopTyping = (userId) => { if (userId === sellerIdVal) setSellerTyping(false) }
 
-    socket.on('receive_message',   onReceive)
-    socket.on('user_online',       onOnline)
-    socket.on('user_offline',      onOffline)
-    socket.on('user_typing',       onTyping)
-    socket.on('user_stop_typing',  onStopTyping)
+    socket.on('receive_message',  onReceive)
+    socket.on('user_online',      onOnline)
+    socket.on('user_offline',     onOffline)
+    socket.on('user_typing',      onTyping)
+    socket.on('user_stop_typing', onStopTyping)
 
     return () => {
       socket.emit('leave_chat', { listingId })
@@ -139,29 +162,29 @@ export default function ChatPage() {
       socket.off('user_typing',      onTyping)
       socket.off('user_stop_typing', onStopTyping)
     }
-  }, [listingId, loading])
+  }, [listingId, loading])  // loading guards ensure one listener at a time
 
   /* ── Disconnect socket on unmount ── */
   useEffect(() => {
     return () => { getSocket().disconnect() }
   }, [])
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const text = inputText.trim()
-    if (!text || !user || !listing) return
+    if (!text || !user || !listing || !chatIdRef.current) return
     const newMsg = {
-      id: `msg_${Date.now()}`,
-      senderId: user._id,
+      id:        `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      senderId:  user._id,
       text,
       timestamp: new Date().toISOString(),
     }
-    setMessages((prev) => [...prev, newMsg])
+    setMessages((prev) => dedup([...prev, newMsg]))
     setInputText('')
     inputRef.current?.focus()
     clearTimeout(typingTimer.current)
     getSocket().emit('stop_typing', { listingId, userId: user._id })
-    getSocket().emit('send_message', { listingId, chatId, message: newMsg })
-  }
+    getSocket().emit('send_message', { listingId, chatId: chatIdRef.current, message: newMsg })
+  }, [inputText, user, listing, listingId])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -187,7 +210,6 @@ export default function ChatPage() {
   const grouped    = groupMessages(messages)
   const canSend    = inputText.trim().length > 0
 
-  /* ── Loading ── */
   if (loading) {
     return (
       <div className="flex flex-col h-[calc(100vh-4rem)] bg-gray-50 items-center justify-center gap-3 text-gray-400">
@@ -203,11 +225,9 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-white">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div className="px-4 py-3 flex items-center gap-3">
-
-          {/* Back */}
           <button
             onClick={() => navigate(-1)}
             className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-indigo-600 transition-colors group"
@@ -217,31 +237,19 @@ export default function ChatPage() {
             </svg>
           </button>
 
-          {/* Seller avatar + presence dot */}
           <div className="relative flex-shrink-0">
-            <img
-              src={defaultAvatar}
-              alt="Seller"
-              className="w-10 h-10 rounded-full object-cover border border-gray-200"
-            />
-            <span className={`
-              absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white
-              transition-colors duration-300
-              ${sellerOnline ? 'bg-emerald-400' : 'bg-gray-300'}
-            `} />
+            <img src={defaultAvatar} alt="Seller" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+            <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white transition-colors duration-300 ${sellerOnline ? 'bg-emerald-400' : 'bg-gray-300'}`} />
           </div>
 
-          {/* Seller name + status */}
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 text-sm leading-tight truncate">
-              {sellerName}
-            </p>
+            <p className="font-bold text-gray-900 text-sm leading-tight truncate">{sellerName}</p>
             {sellerTyping ? (
               <p className="text-xs text-indigo-500 font-medium flex items-center gap-1">
                 <span className="flex gap-0.5">
-                  <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  {[0, 150, 300].map((d) => (
+                    <span key={d} className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  ))}
                 </span>
                 Typing…
               </p>
@@ -252,30 +260,19 @@ export default function ChatPage() {
             )}
           </div>
 
-          {/* Listing context */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="hidden sm:block text-right">
-              <p className="text-xs text-gray-400 truncate max-w-[160px] leading-tight">
-                {listing?.title}
-              </p>
-              <p className="text-sm font-black text-indigo-600 leading-tight">
-                {formatPrice(listing?.price)}
-              </p>
+              <p className="text-xs text-gray-400 truncate max-w-[160px] leading-tight">{listing?.title}</p>
+              <p className="text-sm font-black text-indigo-600 leading-tight">{formatPrice(listing?.price)}</p>
             </div>
-            <img
-              src={listingImg}
-              alt={listing?.title}
-              className="w-10 h-10 rounded-lg object-cover border border-gray-200 shadow-sm"
-            />
+            <img src={listingImg} alt={listing?.title} className="w-10 h-10 rounded-lg object-cover border border-gray-200 shadow-sm" />
           </div>
         </div>
       </div>
 
-      {/* ── Messages ── */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-gray-50/60">
         <div className="px-4 py-6 max-w-3xl mx-auto">
-
-          {/* Empty state */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
               <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
@@ -286,72 +283,44 @@ export default function ChatPage() {
               <div>
                 <p className="font-semibold text-gray-600 text-sm mb-1">Start the conversation</p>
                 <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
-                  Ask {sellerName} about{' '}
-                  <span className="font-medium text-gray-600">{listing?.title}</span>
+                  Ask {sellerName} about <span className="font-medium text-gray-600">{listing?.title}</span>
                 </p>
               </div>
             </div>
           )}
 
-          {/* Message list */}
           <div>
             {grouped.map((item, index) => {
-
               if (item.type === 'separator') {
                 return (
                   <div key={item.id} className="flex items-center gap-3 py-5">
                     <div className="flex-1 h-px bg-gray-200" />
-                    <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-full flex-shrink-0 select-none">
-                      {item.label}
-                    </span>
+                    <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-full flex-shrink-0 select-none">{item.label}</span>
                     <div className="flex-1 h-px bg-gray-200" />
                   </div>
                 )
               }
-
-              // Grouping helpers
               const prev = grouped[index - 1]
               const next = grouped[index + 1]
               const isPrevSame = prev?.type === 'msg' && prev.senderId === item.senderId
               const isNextSame = next?.type === 'msg' && next.senderId === item.senderId
               const mine = isMine(item)
-
-              const mineCorners =
-                isPrevSame && isNextSame ? 'rounded-2xl rounded-r-lg'
-                : isPrevSame  ? 'rounded-2xl rounded-tr-lg'
-                : isNextSame  ? 'rounded-2xl rounded-br-lg'
-                : 'rounded-2xl rounded-br-sm'
-
-              const theirCorners =
-                isPrevSame && isNextSame ? 'rounded-2xl rounded-l-lg'
-                : isPrevSame  ? 'rounded-2xl rounded-tl-lg'
-                : isNextSame  ? 'rounded-2xl rounded-bl-lg'
-                : 'rounded-2xl rounded-bl-sm'
+              const mineCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-r-lg' : isPrevSame ? 'rounded-2xl rounded-tr-lg' : isNextSame ? 'rounded-2xl rounded-br-lg' : 'rounded-2xl rounded-br-sm'
+              const theirCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-l-lg' : isPrevSame ? 'rounded-2xl rounded-tl-lg' : isNextSame ? 'rounded-2xl rounded-bl-lg' : 'rounded-2xl rounded-bl-sm'
 
               return mine ? (
-                /* Sent — right */
                 <div key={item.id} className={`flex justify-end ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}>
                   <div className="max-w-[70%] sm:max-w-[55%]">
                     <div className={`bg-indigo-600 text-white px-4 py-2.5 shadow-sm ${mineCorners}`}>
                       <p className="text-sm leading-relaxed break-words">{item.text}</p>
                     </div>
-                    {!isNextSame && (
-                      <p className="text-[10px] text-gray-400 mt-1 text-right pr-1 select-none">
-                        {formatTime(item.timestamp)}
-                      </p>
-                    )}
+                    {!isNextSame && <p className="text-[10px] text-gray-400 mt-1 text-right pr-1 select-none">{formatTime(item.timestamp)}</p>}
                   </div>
                 </div>
               ) : (
-                /* Received — left */
                 <div key={item.id} className={`flex items-end gap-2 ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}>
-                  {/* Avatar: only show on last in group */}
                   {!isNextSame ? (
-                    <img
-                      src={defaultAvatar}
-                      alt="Seller"
-                      className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-5 shadow-sm border border-gray-200"
-                    />
+                    <img src={defaultAvatar} alt="Seller" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-5 shadow-sm border border-gray-200" />
                   ) : (
                     <div className="w-7 flex-shrink-0" />
                   )}
@@ -359,11 +328,7 @@ export default function ChatPage() {
                     <div className={`bg-white border border-gray-200 text-gray-800 px-4 py-2.5 shadow-sm ${theirCorners}`}>
                       <p className="text-sm leading-relaxed break-words">{item.text}</p>
                     </div>
-                    {!isNextSame && (
-                      <p className="text-[10px] text-gray-400 mt-1 pl-1 select-none">
-                        {formatTime(item.timestamp)}
-                      </p>
-                    )}
+                    {!isNextSame && <p className="text-[10px] text-gray-400 mt-1 pl-1 select-none">{formatTime(item.timestamp)}</p>}
                   </div>
                 </div>
               )
@@ -374,11 +339,9 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ── Input ── */}
+      {/* Input */}
       <div className="flex-shrink-0 bg-white border-t border-gray-100 px-4 py-3">
         <div className="flex items-end gap-2 max-w-3xl mx-auto">
-
-          {/* Rounded-full input */}
           <div className="flex-1 bg-gray-100 rounded-full px-5 py-3 focus-within:ring-2 focus-within:ring-indigo-300 focus-within:bg-white transition-all duration-150">
             <textarea
               ref={inputRef}
@@ -390,37 +353,18 @@ export default function ChatPage() {
               className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 resize-none outline-none max-h-24 leading-relaxed"
             />
           </div>
-
-          {/* Rounded-full send button */}
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className={`
-              flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center
-              transition-all duration-150 shadow-sm
-              ${canSend
-                ? 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-md hover:scale-105 active:scale-95'
-                : 'bg-gray-200 cursor-not-allowed'}
-            `}
+            className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all duration-150 shadow-sm ${canSend ? 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-md hover:scale-105 active:scale-95' : 'bg-gray-200 cursor-not-allowed'}`}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className={`h-5 w-5 ${canSend ? 'text-white' : 'text-gray-400'}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${canSend ? 'text-white' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
           </button>
         </div>
-
-        <p className="text-center text-[10px] text-gray-400 mt-2 select-none">
-          Enter to send · Shift+Enter for new line
-        </p>
+        <p className="text-center text-[10px] text-gray-400 mt-2 select-none">Enter to send · Shift+Enter for new line</p>
       </div>
-
     </div>
   )
 }
