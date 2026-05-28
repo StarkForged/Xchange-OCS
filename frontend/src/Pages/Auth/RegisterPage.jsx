@@ -43,9 +43,7 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      const { user } = await registerUser (form)
-      // Auto-login: generate token locally after successful registration
-      const token = `mock-token-${user._id}-${Date.now()}`
+      const { token, user } = await registerUser(form)
       setAuth(user, token)
       navigate('/')
     } catch (err) {
