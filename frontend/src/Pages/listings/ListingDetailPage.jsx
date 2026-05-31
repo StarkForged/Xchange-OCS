@@ -288,29 +288,69 @@ export default function ListingDetailPage() {
             <div className="border-t border-gray-100" />
 
             {/* Seller mini-card inside sticky panel */}
-            <div className="flex items-center gap-3">
-              <div className="relative flex-shrink-0">
-                <img
-                  src={typeof seller === 'object' && seller?.profileImage ? seller.profileImage : defaultAvatar}
-                  alt="Seller"
-                  className="w-11 h-11 rounded-full object-cover border-2 border-indigo-100 shadow-sm"
-                />
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="relative flex-shrink-0">
+                  <img
+                    src={typeof seller === 'object' && seller?.profileImage ? seller.profileImage : defaultAvatar}
+                    alt="Seller"
+                    className="w-11 h-11 rounded-full object-cover border-2 border-indigo-100 shadow-sm"
+                  />
+                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-800 leading-tight truncate">
+                    {formatSellerName(seller)}
+                  </p>
+                  {/* Trust score mini bar */}
+                  {typeof seller === 'object' && seller?.trustScore != null && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            seller.trustScore >= 80 ? 'bg-amber-400'
+                            : seller.trustScore >= 50 ? 'bg-emerald-400'
+                            : seller.trustScore > 0  ? 'bg-sky-400'
+                            : 'bg-gray-300'
+                          }`}
+                          style={{ width: `${seller.trustScore}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-500 flex-shrink-0">
+                        {seller.trustScore}/100
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-[10px] text-gray-400 mb-0.5">Joined</p>
+                  <p className="text-xs font-semibold text-gray-600">
+                    {timeAgo(typeof seller === 'object' ? seller?.createdAt : createdAt)}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-gray-800 leading-tight truncate">
-                  {formatSellerName(seller)}
-                </p>
-                <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+
+              {/* Seller badges (max 3) */}
+              {typeof seller === 'object' && seller?.badges?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {seller.badges.slice(0, 3).map((b) => (
+                    <span
+                      key={b.id}
+                      title={b.description}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600"
+                    >
+                      {b.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Fallback if no badges yet */}
+              {(typeof seller !== 'object' || !seller?.badges?.length) && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
                   ✓ Verified Seller
                 </span>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-[10px] text-gray-400 mb-0.5">Joined</p>
-                <p className="text-xs font-semibold text-gray-600">
-                  {timeAgo(typeof seller === 'object' ? seller?.createdAt : createdAt)}
-                </p>
-              </div>
+              )}
             </div>
           </div>
         </div>
