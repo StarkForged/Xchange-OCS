@@ -65,7 +65,7 @@ exports.getListings = async (req, res, next) => {
 exports.getListingById = async (req, res, next) => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('seller', 'name profileImage createdAt')
+      .populate('seller', 'name profileImage createdAt trustScore profileCompletion badges sellerMetrics')
       .lean()
     if (!listing) throw new ApiError(404, 'Listing not found')
 

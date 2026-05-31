@@ -1,6 +1,7 @@
 const Chat         = require('../Models/Chat')
 const Message      = require('../Models/Message')
 const Notification = require('../Models/Notification')
+const User         = require('../Models/User')
 
 const users = new Map() // userId → socket.id
 
@@ -57,6 +58,12 @@ const registerChatSocket = (io) => {
 
           normalised.id        = String(saved._id)
           normalised.timestamp = saved.createdAt.toISOString()
+
+          // Track last-active time for ghost-seller detection (non-blocking)
+          User.findByIdAndUpdate(
+            message.senderId,
+            { 'sellerMetrics.lastActiveAt': saved.createdAt }
+          ).catch(() => {})
 
           socket.emit('message_sent', {
             tempId,
