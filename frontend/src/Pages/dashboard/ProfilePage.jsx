@@ -90,7 +90,7 @@ export default function ProfilePage() {
         // Sync fresh data back to auth store
         updateUser(profileRes.user)
       })
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [])

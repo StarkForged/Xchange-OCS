@@ -239,8 +239,7 @@ export default function CreateListingPage() {
         },
       })
       navigate('/listings')
-    } catch (err) {
-      console.error(err)
+    } catch {
       setErrors({ submit: 'Something went wrong. Please try again.' })
     } finally {
       setLoading(false)

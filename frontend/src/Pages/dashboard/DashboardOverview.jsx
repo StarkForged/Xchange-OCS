@@ -148,8 +148,8 @@ export default function DashboardOverview() {
           setListings(lr.listings || [])
           setChats(cr.chats || [])
         }
-      } catch (err) {
-        console.error(err)
+      } catch {
+        // silent — stats are non-critical, UI shows empty state gracefully
       } finally {
         if (!cancelled) setLoading(false)
       }

@@ -6,20 +6,16 @@ const users = new Map() // userId → socket.id
 
 const registerChatSocket = (io) => {
   io.on('connection', (socket) => {
-    console.log(`[socket] connected: ${socket.id}`)
 
     // Track userId → socket for presence events
     socket.on('register', ({ userId }) => {
       if (!userId) return
       users.set(userId, socket.id)
       io.emit('user_online', userId)
-      console.log(`[socket] registered: ${userId}`)
     })
 
     socket.on('join_chat', ({ listingId }) => {
-      const room = `chat_${listingId}`
-      socket.join(room)
-      console.log(`[socket] ${socket.id} joined ${room}`)
+      socket.join(`chat_${listingId}`)
     })
 
     // 1. Persist to MongoDB
@@ -28,8 +24,8 @@ const registerChatSocket = (io) => {
     // 4. Broadcast to all other participants in the room
     // 5. Create notification for the receiver
     socket.on('send_message', async ({ listingId, chatId, message }) => {
-      const room    = `chat_${listingId}`
-      const tempId  = message.id || `msg_${Date.now()}`  // capture before overwrite
+      const room   = `chat_${listingId}`
+      const tempId = message.id || `msg_${Date.now()}`
 
       const normalised = {
         id:        tempId,
@@ -47,7 +43,6 @@ const registerChatSocket = (io) => {
             text:   message.text,
           })
 
-          // Update lastMessage and retrieve participants for notification
           const updatedChat = await Chat.findByIdAndUpdate(
             chatId,
             {
@@ -63,14 +58,12 @@ const registerChatSocket = (io) => {
           normalised.id        = String(saved._id)
           normalised.timestamp = saved.createdAt.toISOString()
 
-          // Ack sender with real DB id so the frontend can replace the temp message
           socket.emit('message_sent', {
             tempId,
             realId:    normalised.id,
             timestamp: normalised.timestamp,
           })
 
-          // Notify receiver (non-blocking)
           if (updatedChat) {
             const receiverId = updatedChat.participants
               .find((p) => String(p) !== String(message.senderId))
@@ -92,7 +85,6 @@ const registerChatSocket = (io) => {
         }
       }
 
-      // Broadcast to everyone else in the room
       socket.to(room).emit('receive_message', normalised)
     })
 
@@ -124,9 +116,7 @@ const registerChatSocket = (io) => {
     })
 
     socket.on('leave_chat', ({ listingId }) => {
-      const room = `chat_${listingId}`
-      socket.leave(room)
-      console.log(`[socket] ${socket.id} left ${room}`)
+      socket.leave(`chat_${listingId}`)
     })
 
     socket.on('disconnect', () => {
@@ -134,11 +124,9 @@ const registerChatSocket = (io) => {
         if (sid === socket.id) {
           users.delete(userId)
           io.emit('user_offline', userId)
-          console.log(`[socket] offline: ${userId}`)
           break
         }
       }
-      console.log(`[socket] disconnected: ${socket.id}`)
     })
   })
 }

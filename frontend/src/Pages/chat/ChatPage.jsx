@@ -142,8 +142,8 @@ export default function ChatPage() {
             return dedup([...msgs, ...extras])
           })
         }
-      } catch (err) {
-        console.error('[ChatPage] load error:', err)
+      } catch {
+        // silent
       } finally {
         if (!cancelled) setLoading(false)
       }

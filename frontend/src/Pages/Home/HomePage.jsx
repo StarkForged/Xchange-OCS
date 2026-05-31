@@ -315,7 +315,7 @@ export default function HomePage() {
           setTotalCount(data?.length ?? 0)
         }
       })
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingListings(false) })
     return () => { cancelled = true }
   }, [])

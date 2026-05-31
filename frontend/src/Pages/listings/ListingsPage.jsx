@@ -59,9 +59,8 @@ export default function ListingsPage() {
       try {
         const data = await getListings({ search: debouncedSearch, category, minPrice, maxPrice, sortBy })
         if (!cancelled) setListings(Array.isArray(data) ? data : [])
-      } catch (err) {
+      } catch {
         if (!cancelled) {
-          console.error(err)
           setError('Something went wrong while fetching listings')
         }
       } finally {

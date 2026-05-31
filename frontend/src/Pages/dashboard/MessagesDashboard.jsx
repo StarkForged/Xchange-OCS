@@ -76,8 +76,8 @@ export default function MessagesDashboard() {
         // Listing data is embedded — single API call, no per-conversation fetches
         const data = await getConversations()
         if (!cancelled) setConvos(data)
-      } catch (err) {
-        console.error(err)
+      } catch {
+        // silent
       } finally {
         if (!cancelled) setLoading(false)
       }

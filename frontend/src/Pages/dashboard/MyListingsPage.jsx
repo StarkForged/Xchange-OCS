@@ -107,7 +107,7 @@ export default function MyListingsPage() {
     let cancelled = false
     getMyListingsAPI()
       .then((r) => { if (!cancelled) setListings(r.listings || []) })
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [])

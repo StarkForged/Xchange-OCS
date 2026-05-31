@@ -91,7 +91,7 @@ export default function SettingsPage() {
         setPhone(u.phone   || '')
         setLocation(u.location || '')
       })
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
@@ -105,8 +105,7 @@ export default function SettingsPage() {
       updateUser(updated)
       setSaveState('success')
       setTimeout(() => setSaveState(null), 3000)
-    } catch (err) {
-      console.error(err)
+    } catch {
       setSaveState('error')
     } finally {
       setSaving(false)

@@ -19,10 +19,13 @@ exports.getOrCreateChat = async (req, res, next) => {
       throw new ApiError(400, 'You cannot chat with yourself on your own listing')
     }
 
-    // Atomic: find-or-create in one round trip, no race-condition duplicates
+    // Stable key: listingId + sorted participant IDs — order-independent
+    const chatKey = String(listingId) + ':' + [buyerId, sellerId].sort().join(':')
+
+    // Atomic: find-or-create in one round trip using the unique chatKey
     const chat = await Chat.findOneAndUpdate(
-      { listing: listingId, participants: { $all: [buyerId, sellerId] } },
-      { $setOnInsert: { listing: listingId, participants: [buyerId, sellerId] } },
+      { chatKey },
+      { $setOnInsert: { listing: listingId, participants: [buyerId, sellerId], chatKey } },
       { upsert: true, new: true }
     ).populate('participants', 'name _id')
 
@@ -93,70 +96,6 @@ exports.deleteMessage = async (req, res, next) => {
     await message.save()
 
     res.json({ success: true })
-  } catch (err) {
-    next(err)
-  }
-}
-
-// POST /api/chats/cleanup — one-time dedup: merge messages into the oldest chat,
-// delete the extras.  Run once after deploying the atomic upsert fix.
-exports.cleanupDuplicates = async (req, res, next) => {
-  try {
-    // Load every chat (just ids + participants + listing) — no message data yet
-    const allChats = await Chat.find({}, '_id listing participants createdAt').lean()
-
-    // Group by canonical key = sorted(participantIds) + listingId
-    const groups = {}
-    for (const chat of allChats) {
-      const sorted = [...chat.participants].map(String).sort().join('|')
-      const key    = `${chat.listing}_${sorted}`
-      if (!groups[key]) groups[key] = []
-      groups[key].push(chat)
-    }
-
-    const duplicateGroups = Object.values(groups).filter((g) => g.length > 1)
-
-    let chatsDeleted   = 0
-    let messagesMerged = 0
-
-    for (const group of duplicateGroups) {
-      // Keep the oldest chat (first created) — it may already hold messages
-      group.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-      const keeper    = group[0]
-      const dupeIds   = group.slice(1).map((c) => c._id)
-
-      // Re-point all messages from duplicates to the keeper
-      const moved = await Message.updateMany(
-        { chat: { $in: dupeIds } },
-        { $set: { chat: keeper._id } }
-      )
-      messagesMerged += moved.modifiedCount
-
-      // Recompute lastMessage on the keeper from its (now merged) messages
-      const latest = await Message.findOne({ chat: keeper._id })
-        .sort({ createdAt: -1 })
-        .lean()
-      if (latest) {
-        await Chat.findByIdAndUpdate(keeper._id, {
-          lastMessage: {
-            text:      latest.isDeleted ? 'This message was deleted' : latest.text,
-            sender:    latest.sender,
-            createdAt: latest.createdAt,
-          },
-        })
-      }
-
-      // Delete the duplicate shells
-      await Chat.deleteMany({ _id: { $in: dupeIds } })
-      chatsDeleted += dupeIds.length
-    }
-
-    res.json({
-      duplicateGroups: duplicateGroups.length,
-      chatsDeleted,
-      messagesMerged,
-      message: chatsDeleted === 0 ? 'No duplicates found.' : 'Cleanup complete.',
-    })
   } catch (err) {
     next(err)
   }
