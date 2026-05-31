@@ -16,46 +16,61 @@ const timeAgo = (d) => {
 
 const formatPrice = (p) => p?.amount != null ? `₹${p.amount.toLocaleString('en-IN')}` : '—'
 
+// ── Stat card ──────────────────────────────────────────────────────────────
+
 function StatCard({ label, value, sub, icon, from, to, loading }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${from} ${to} p-5 shadow-sm hover:shadow-md transition-shadow duration-200`}>
+    <div
+      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${from} ${to} p-5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200`}
+    >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-semibold text-white/70 uppercase tracking-widest mb-1">{label}</p>
+          <p className="text-[11px] font-bold text-white/70 uppercase tracking-widest mb-1.5">{label}</p>
           <p className="text-3xl font-black text-white leading-none">
-            {loading ? <span className="inline-block w-10 h-7 bg-white/20 rounded animate-pulse" /> : value}
+            {loading
+              ? <span className="inline-block w-10 h-7 bg-white/20 rounded-lg animate-pulse" />
+              : value
+            }
           </p>
           <p className="text-xs text-white/60 mt-1.5 font-medium">{sub}</p>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white flex-shrink-0">
+        <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center text-white flex-shrink-0">
           {icon}
         </div>
       </div>
-      {/* subtle shine */}
-      <div className="absolute -bottom-4 -right-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
+      {/* decorative ring */}
+      <div className="absolute -bottom-6 -right-6 w-28 h-28 rounded-full bg-white/10 pointer-events-none" />
+      <div className="absolute -bottom-10 -right-2 w-16 h-16 rounded-full bg-white/5 pointer-events-none" />
     </div>
   )
 }
+
+// ── Quick action card ──────────────────────────────────────────────────────
 
 function QuickActionCard({ to, label, description, icon, accent }) {
   return (
     <Link
       to={to}
-      className={`group flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}
+      className="group flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
     >
-      <div className={`w-11 h-11 rounded-xl ${accent} flex items-center justify-center flex-shrink-0`}>
+      <div className={`w-11 h-11 rounded-xl ${accent} flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform duration-200`}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-900">{label}</p>
         <p className="text-xs text-gray-400 mt-0.5">{description}</p>
       </div>
-      <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg
+        className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all duration-150 flex-shrink-0"
+        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+      >
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
       </svg>
     </Link>
   )
 }
+
+// ── Profile completion ─────────────────────────────────────────────────────
 
 function ProfileCompletion({ user }) {
   const checks = [
@@ -63,45 +78,66 @@ function ProfileCompletion({ user }) {
     { label: 'Email verified',     done: !!user?.email },
     { label: 'Profile photo',      done: !!(user?.profileImage && !user.profileImage.includes('default-avatar.png')) },
     { label: 'Trust score earned', done: (user?.trustScore ?? 0) > 0 },
-    { label: 'First listing',      done: false }, // will be updated by parent
+    { label: 'First listing',      done: false },
   ]
-  const pct = Math.round((checks.filter((c) => c.done).length / checks.length) * 100)
+  const pct   = Math.round((checks.filter(c => c.done).length / checks.length) * 100)
   const color = pct < 40 ? 'bg-rose-500' : pct < 70 ? 'bg-amber-500' : 'bg-emerald-500'
+  const label = pct < 40 ? 'text-rose-600' : pct < 70 ? 'text-amber-600' : 'text-emerald-600'
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 h-full">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-bold text-gray-900">Profile Completion</h3>
+          <h3 className="text-sm font-bold text-gray-900">Profile Strength</h3>
           <p className="text-xs text-gray-400 mt-0.5">Complete your profile to build trust</p>
         </div>
-        <span className="text-2xl font-black text-gray-900">{pct}%</span>
+        <span className={`text-2xl font-black ${label}`}>{pct}%</span>
       </div>
+
+      {/* Progress bar */}
       <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-        <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${color}`}
+          style={{ width: `${pct}%` }}
+        />
       </div>
-      <div className="space-y-2">
-        {checks.map((c) => (
+
+      {/* Checklist */}
+      <div className="space-y-2.5">
+        {checks.map(c => (
           <div key={c.label} className="flex items-center gap-2.5">
-            <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${c.done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+            <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${c.done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
               {c.done
                 ? <svg className="w-2.5 h-2.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                 : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
               }
             </div>
-            <span className={`text-xs font-medium ${c.done ? 'text-gray-700' : 'text-gray-400'}`}>{c.label}</span>
+            <span className={`text-xs font-medium ${c.done ? 'text-gray-700' : 'text-gray-400'}`}>
+              {c.label}
+            </span>
           </div>
         ))}
       </div>
+
+      {pct < 100 && (
+        <Link
+          to="/dashboard/profile"
+          className="mt-4 flex items-center justify-center h-9 w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition-colors duration-150"
+        >
+          Complete Profile →
+        </Link>
+      )}
     </div>
   )
 }
 
+// ── Main ───────────────────────────────────────────────────────────────────
+
 export default function DashboardOverview() {
   const { user } = useAuthStore()
   const [listings, setListings] = useState([])
-  const [chats, setChats]       = useState([])
-  const [loading, setLoading]   = useState(true)
+  const [chats,    setChats]    = useState([])
+  const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -123,7 +159,7 @@ export default function DashboardOverview() {
   }, [])
 
   const totalListings  = listings.length
-  const activeListings = listings.filter((l) => l.status === 'active').length
+  const activeListings = listings.filter(l => l.status === 'active').length
   const totalChats     = chats.length
   const recentListings = listings.slice(0, 3)
 
@@ -131,11 +167,22 @@ export default function DashboardOverview() {
     <div className="space-y-7 max-w-6xl">
 
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Welcome back — here's what's happening with your marketplace activity.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Overview</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            Your marketplace activity at a glance
+          </p>
+        </div>
+        <Link
+          to="/create-listing"
+          className="hidden sm:flex items-center gap-1.5 h-9 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all duration-150 shadow-sm hover:shadow-md"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Post Listing
+        </Link>
       </div>
 
       {/* Stats grid */}
@@ -238,14 +285,20 @@ export default function DashboardOverview() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-gray-900">Recent Listings</h2>
-          <Link to="/dashboard/listings" className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
-            View all →
+          <Link
+            to="/dashboard/listings"
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors flex items-center gap-1"
+          >
+            View all
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
           </Link>
         </div>
 
         {loading && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3].map(i => (
               <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
                 <div className="aspect-[4/3] bg-gray-100 rounded-xl mb-3" />
                 <div className="h-3 bg-gray-100 rounded w-3/4 mb-2" />
@@ -259,19 +312,19 @@ export default function DashboardOverview() {
           <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-14 text-center">
             <div className="text-4xl mb-3">📦</div>
             <p className="text-sm font-semibold text-gray-700 mb-1">No listings yet</p>
-            <p className="text-xs text-gray-400 mb-4">Your posted listings will appear here</p>
+            <p className="text-xs text-gray-400 mb-5">Your posted listings will appear here</p>
             <Link
               to="/create-listing"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+              className="inline-flex items-center gap-1.5 h-9 px-5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors"
             >
-              Post your first listing →
+              Post your first listing
             </Link>
           </div>
         )}
 
         {!loading && recentListings.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {recentListings.map((listing) => (
+            {recentListings.map(listing => (
               <Link
                 key={listing._id}
                 to={`/listings/${listing._id}`}
@@ -285,8 +338,8 @@ export default function DashboardOverview() {
                   />
                 </div>
                 <div className="p-3.5">
-                  <p className="text-sm font-semibold text-gray-900 line-clamp-1">{listing.title}</p>
-                  <div className="flex items-center justify-between mt-1.5">
+                  <p className="text-sm font-semibold text-gray-900 line-clamp-1 mb-1.5">{listing.title}</p>
+                  <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-indigo-600">{formatPrice(listing.price)}</span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                       listing.status === 'active'
@@ -298,7 +351,7 @@ export default function DashboardOverview() {
                       {listing.status}
                     </span>
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-1">{timeAgo(listing.createdAt)}</p>
+                  <p className="text-[11px] text-gray-400 mt-1.5">{timeAgo(listing.createdAt)}</p>
                 </div>
               </Link>
             ))}

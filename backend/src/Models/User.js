@@ -54,6 +54,14 @@ const userSchema = new mongoose.Schema(
       min: 0,
       max: 100,
     },
+    // Array of Listing ObjectIds the user has saved/favourited.
+    // $addToSet ensures no duplicates at the DB level.
+    savedListings: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Listing',
+      },
+    ],
   },
   { timestamps: true }
 )

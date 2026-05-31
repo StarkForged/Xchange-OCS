@@ -1,5 +1,6 @@
-const Chat    = require('../Models/Chat')
-const Message = require('../Models/Message')
+const Chat         = require('../Models/Chat')
+const Message      = require('../Models/Message')
+const Notification = require('../Models/Notification')
 
 const users = new Map() // userId → socket.id
 
@@ -7,7 +8,7 @@ const registerChatSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`)
 
-    // Client registers their userId so server can track online status
+    // Track userId → socket for presence events
     socket.on('register', ({ userId }) => {
       if (!userId) return
       users.set(userId, socket.id)
@@ -15,60 +16,102 @@ const registerChatSocket = (io) => {
       console.log(`[socket] registered: ${userId}`)
     })
 
-    // Client joins a chat room (one room per listing)
     socket.on('join_chat', ({ listingId }) => {
       const room = `chat_${listingId}`
       socket.join(room)
       console.log(`[socket] ${socket.id} joined ${room}`)
     })
 
-    // Client sends a message:
-    // 1. Save to MongoDB
-    // 2. Update chat's lastMessage
-    // 3. Broadcast normalised message to the room
+    // 1. Persist to MongoDB
+    // 2. Update chat lastMessage
+    // 3. Ack sender with real DB id (so temp id can be swapped out)
+    // 4. Broadcast to all other participants in the room
+    // 5. Create notification for the receiver
     socket.on('send_message', async ({ listingId, chatId, message }) => {
-      const room = `chat_${listingId}`
+      const room    = `chat_${listingId}`
+      const tempId  = message.id || `msg_${Date.now()}`  // capture before overwrite
 
-      // Build the normalised payload used by the frontend
       const normalised = {
-        id:        message.id || `msg_${Date.now()}`,
+        id:        tempId,
         senderId:  message.senderId,
         text:      message.text,
         timestamp: message.timestamp || new Date().toISOString(),
+        isDeleted: false,
       }
 
-      // Persist if we have a valid chatId
       if (chatId && message.senderId && message.text) {
         try {
-          console.log({
-  chatId,
-  sender: message.senderId,
-  text: message.text,
-})
           const saved = await Message.create({
             chat:   chatId,
             sender: message.senderId,
             text:   message.text,
           })
 
-          await Chat.findByIdAndUpdate(chatId, {
-            lastMessage: {
-              text:      message.text,
-              sender:    message.senderId,
-              createdAt: saved.createdAt,
+          // Update lastMessage and retrieve participants for notification
+          const updatedChat = await Chat.findByIdAndUpdate(
+            chatId,
+            {
+              lastMessage: {
+                text:      message.text,
+                sender:    message.senderId,
+                createdAt: saved.createdAt,
+              },
             },
-          })
+            { new: true }
+          ).lean()
 
-          // Use the DB-generated id and timestamp
           normalised.id        = String(saved._id)
           normalised.timestamp = saved.createdAt.toISOString()
+
+          // Ack sender with real DB id so the frontend can replace the temp message
+          socket.emit('message_sent', {
+            tempId,
+            realId:    normalised.id,
+            timestamp: normalised.timestamp,
+          })
+
+          // Notify receiver (non-blocking)
+          if (updatedChat) {
+            const receiverId = updatedChat.participants
+              .find((p) => String(p) !== String(message.senderId))
+            if (receiverId) {
+              const preview = message.text.length > 80
+                ? message.text.substring(0, 80) + '…'
+                : message.text
+              Notification.create({
+                user:    receiverId,
+                type:    'message',
+                title:   'New Message',
+                message: preview,
+                link:    `/chat/${updatedChat.listing}`,
+              }).catch(() => {})
+            }
+          }
         } catch (err) {
           console.error('[socket] message persist failed:', err)
-          // Broadcast the optimistic payload even if DB write failed
         }
       }
 
+      // Broadcast to everyone else in the room
       socket.to(room).emit('receive_message', normalised)
+    })
+
+    // Soft-delete — only the sender may delete
+    socket.on('delete_message', async ({ messageId, chatId, listingId, userId }) => {
+      try {
+        const message = await Message.findOne({ _id: messageId, chat: chatId })
+        if (!message || message.isDeleted) return
+        if (String(message.sender) !== String(userId)) return
+
+        message.isDeleted = true
+        message.deletedAt = new Date()
+        message.text      = 'This message was deleted'
+        await message.save()
+
+        io.to(`chat_${listingId}`).emit('message_deleted', { messageId: String(message._id) })
+      } catch (err) {
+        console.error('[socket] delete_message failed:', err)
+      }
     })
 
     // Typing indicators
@@ -80,7 +123,6 @@ const registerChatSocket = (io) => {
       socket.to(`chat_${listingId}`).emit('user_stop_typing', userId)
     })
 
-    // Client explicitly leaves a room (on conversation switch / unmount)
     socket.on('leave_chat', ({ listingId }) => {
       const room = `chat_${listingId}`
       socket.leave(room)

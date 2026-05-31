@@ -1,10 +1,11 @@
 const express = require('express')
 const cors = require('cors')
 
-const authRoutes    = require('./Routes/auth.routes')
-const listingRoutes = require('./Routes/listing.routes')
-const chatRoutes    = require('./Routes/chat.routes')
-const userRoutes    = require('./Routes/user.routes')
+const authRoutes         = require('./Routes/auth.routes')
+const listingRoutes      = require('./Routes/listing.routes')
+const chatRoutes         = require('./Routes/chat.routes')
+const userRoutes         = require('./Routes/user.routes')
+const notificationRoutes = require('./Routes/notification.routes')
 const { notFound, errorHandler } = require('./Middleware/error.middleware')
 
 const app = express()
@@ -20,10 +21,11 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-app.use('/api/auth',     authRoutes)
-app.use('/api/listings', listingRoutes)
-app.use('/api/chats',    chatRoutes)
-app.use('/api/users',    userRoutes)
+app.use('/api/auth',          authRoutes)
+app.use('/api/listings',      listingRoutes)
+app.use('/api/chats',         chatRoutes)
+app.use('/api/users',         userRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 app.use(notFound)
 app.use(errorHandler)

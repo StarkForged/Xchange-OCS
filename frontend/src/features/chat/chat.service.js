@@ -1,19 +1,32 @@
-import { getOrCreateChatAPI, getChatsAPI, getMessagesAPI } from '../../api/chat.api'
+import { getOrCreateChatAPI, getChatsAPI, getMessagesAPI, deleteMessageAPI } from '../../api/chat.api'
 
 // Returns the chat document — caller stores chat._id as chatId
+// chat.participants is populated: [{ _id, name }]
 export const getOrCreateChat = async (listingId) => {
   const { chat } = await getOrCreateChatAPI(listingId)
   return chat
 }
 
-// Returns conversations normalised to what ChatDashboard expects:
-// [{ chatId, listingId, lastMessage: { senderId, text, timestamp } | null }]
+// Returns conversations normalised for ChatDashboard.
+// Listing data is embedded from the getChats populate — no N+1 calls needed.
+// sellerId lets the UI split into Buying / Selling tabs.
 export const getConversations = async () => {
   const { chats } = await getChatsAPI()
 
   return chats.map((chat) => ({
     chatId:    String(chat._id),
     listingId: String(chat.listing?._id || chat.listing),
+    sellerId:  String(chat.listing?.seller || ''),
+    listing: {
+      _id:    String(chat.listing?._id || chat.listing),
+      title:  chat.listing?.title  || '',
+      images: chat.listing?.images || [],
+      price:  chat.listing?.price  || null,
+    },
+    participants: (chat.participants || []).map((p) => ({
+      _id:  String(p._id),
+      name: p.name || 'User',
+    })),
     lastMessage: chat.lastMessage?.text
       ? {
           senderId:  String(chat.lastMessage.sender),
@@ -24,9 +37,12 @@ export const getConversations = async () => {
   }))
 }
 
-// Returns messages already normalised by the backend:
-// [{ id, senderId, text, timestamp }]
+// Returns messages normalised by the backend: [{ id, senderId, text, timestamp, isDeleted }]
 export const getMessages = async (chatId) => {
   const { messages } = await getMessagesAPI(chatId)
   return messages
+}
+
+export const deleteMessage = async (chatId, messageId) => {
+  return deleteMessageAPI(chatId, messageId)
 }

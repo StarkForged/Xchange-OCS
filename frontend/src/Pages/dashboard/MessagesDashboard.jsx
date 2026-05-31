@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getConversations } from '../../features/chat/chat.service'
-import { getListingById } from '../../features/listings/listings.service'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
 const timeAgo = (ts) => {
@@ -17,17 +16,17 @@ const timeAgo = (ts) => {
   return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
+// Listing data is now embedded in the conversation by the service — no extra fetch needed.
 function ConversationCard({ convo }) {
-  const navigate = useNavigate()
-  const hasMessage = !!convo.lastMessage?.text
+  const navigate   = useNavigate()
   const listing    = convo.listing
+  const hasMessage = !!convo.lastMessage?.text
 
   return (
     <button
       onClick={() => navigate(`/chat/${convo.listingId}`)}
       className="group w-full flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 p-4 text-left transition-all duration-200"
     >
-      {/* Listing image */}
       <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
         <img
           src={listing?.images?.[0] || defaultImage}
@@ -36,7 +35,6 @@ function ConversationCard({ convo }) {
         />
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-900 truncate">
           {listing?.title || 'Listing'}
@@ -53,7 +51,6 @@ function ConversationCard({ convo }) {
         )}
       </div>
 
-      {/* Right side */}
       <div className="flex-shrink-0 text-right space-y-1">
         <p className="text-[11px] text-gray-400 font-medium">
           {timeAgo(convo.lastMessage?.timestamp)}
@@ -76,17 +73,9 @@ export default function MessagesDashboard() {
     let cancelled = false
     const load = async () => {
       try {
-        const raw = await getConversations()
-        // Enrich each with listing data
-        const enriched = await Promise.all(
-          raw.map(async (c) => {
-            try {
-              const listing = await getListingById(c.listingId)
-              return { ...c, listing }
-            } catch { return c }
-          })
-        )
-        if (!cancelled) setConvos(enriched)
+        // Listing data is embedded — single API call, no per-conversation fetches
+        const data = await getConversations()
+        if (!cancelled) setConvos(data)
       } catch (err) {
         console.error(err)
       } finally {
@@ -100,7 +89,6 @@ export default function MessagesDashboard() {
   return (
     <div className="max-w-3xl space-y-6">
 
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Messages</h1>
@@ -119,7 +107,6 @@ export default function MessagesDashboard() {
         </Link>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -134,7 +121,6 @@ export default function MessagesDashboard() {
         </div>
       )}
 
-      {/* Empty */}
       {!loading && convos.length === 0 && (
         <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-20 text-center">
           <div className="text-5xl mb-4">💬</div>
@@ -151,7 +137,6 @@ export default function MessagesDashboard() {
         </div>
       )}
 
-      {/* Conversations */}
       {!loading && convos.length > 0 && (
         <div className="space-y-3">
           {convos.map((convo) => (
@@ -160,13 +145,9 @@ export default function MessagesDashboard() {
         </div>
       )}
 
-      {/* Footer link */}
       {!loading && convos.length > 0 && (
         <div className="text-center pt-2">
-          <Link
-            to="/chat"
-            className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
-          >
+          <Link to="/chat" className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
             Open full messaging experience →
           </Link>
         </div>

@@ -1,6 +1,10 @@
 import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { Heart } from 'lucide-react'
+import { animate } from 'framer-motion'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
+import useAuthStore from '../../store/auth.Store'
+import { toggleSavedListingAPI } from '../../api/user.api'
 
 const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')
@@ -36,12 +40,18 @@ export default function ListingCard({ listing }) {
   const allImages  = images?.length > 0 ? images : [defaultImage]
   const hasMultiple = allImages.length > 1
 
-  const [activeIdx,  setActiveIdx]  = useState(0)
-  const [hovered,    setHovered]    = useState(false)
-  const [imgLoaded,  setImgLoaded]  = useState(false)
-  const [saved,      setSaved]      = useState(false)
+  // Pull saved state directly from the persisted store — no local useState.
+  // Any component that calls addSavedId/removeSavedId will cause a re-render here.
+  const { isAuthenticated, savedListingIds, addSavedId, removeSavedId, setSavedListingIds } = useAuthStore()
+  const saved    = savedListingIds.includes(_id)
+  const [toggling, setToggling] = useState(false)
+
+  const [activeIdx, setActiveIdx] = useState(0)
+  const [hovered,   setHovered]   = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
   const scrollAccRef   = useRef(0)
   const scrollTimerRef = useRef(null)
+  const imgAreaRef     = useRef(null)   // ref to image area div, used for fly animation
 
   const isSold     = status === 'sold'
   const sellerName = typeof seller === 'object' ? (seller?.name || 'Seller') : 'Seller'
@@ -76,9 +86,82 @@ export default function ListingCard({ listing }) {
     setActiveIdx(idx); setImgLoaded(false)
   }, [])
 
-  const toggleSave = (e) => {
-    e.preventDefault(); e.stopPropagation()
-    setSaved((s) => !s)
+  // ── Fly-to-heart animation ─────────────────────────────────────────────
+  // Creates a ghost thumbnail that animates from the listing image to the
+  // navbar heart icon (data-heart-target). Pulses the heart on arrival.
+  const animateFlyToHeart = useCallback(() => {
+    const imgEl   = imgAreaRef.current
+    const heartEl = document.querySelector('[data-heart-target]')
+    if (!imgEl || !heartEl) return
+
+    const fromRect = imgEl.getBoundingClientRect()
+    const toRect   = heartEl.getBoundingClientRect()
+
+    const ghost = document.createElement('div')
+    const currentImg = allImages[activeIdx]
+
+    Object.assign(ghost.style, {
+      position:      'fixed',
+      left:          `${fromRect.left}px`,
+      top:           `${fromRect.top}px`,
+      width:         `${fromRect.width}px`,
+      height:        `${fromRect.height}px`,
+      backgroundImage: `url(${currentImg})`,
+      backgroundSize:  'cover',
+      backgroundPosition: 'center',
+      borderRadius:  '12px',
+      pointerEvents: 'none',
+      zIndex:        '99999',
+      willChange:    'transform, opacity, border-radius',
+    })
+    document.body.appendChild(ghost)
+
+    // Translate to the heart icon center relative to the ghost's starting position
+    const dx = (toRect.left + toRect.width  / 2) - (fromRect.left + fromRect.width  / 2)
+    const dy = (toRect.top  + toRect.height / 2) - (fromRect.top  + fromRect.height / 2)
+
+    animate(ghost, {
+      x:            dx,
+      y:            dy,
+      scale:        [1, 0.85, 0.12],
+      borderRadius: ['12px', '20px', '50%'],
+      opacity:      [1, 1, 0.9, 0],
+    }, {
+      duration: 0.52,
+      ease:     [0.4, 0, 0.2, 1],
+      onComplete: () => {
+        ghost.remove()
+        animate(heartEl, { scale: [1, 1.4, 0.85, 1] }, { duration: 0.38, ease: 'easeOut' })
+      },
+    })
+  }, [allImages, activeIdx])
+
+  const toggleSave = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isAuthenticated || toggling) return
+
+    const willSave = !saved
+    setToggling(true)
+
+    // Optimistic update — instant visual feedback
+    if (willSave) {
+      addSavedId(_id)
+      animateFlyToHeart()   // only animate when saving, not unsaving
+    } else {
+      removeSavedId(_id)
+    }
+
+    try {
+      const { savedListingIds: serverIds } = await toggleSavedListingAPI(_id)
+      setSavedListingIds(serverIds)
+    } catch {
+      // Revert on failure
+      if (willSave) removeSavedId(_id)
+      else           addSavedId(_id)
+    } finally {
+      setToggling(false)
+    }
   }
 
   return (
@@ -89,7 +172,7 @@ export default function ListingCard({ listing }) {
       onMouseLeave={() => setHovered(false)}
     >
       {/* ── Image area ── */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100 select-none" onWheel={handleWheel}>
+      <div ref={imgAreaRef} className="relative aspect-[4/3] overflow-hidden bg-gray-100 select-none" onWheel={handleWheel}>
 
         <img
           key={activeIdx}
@@ -115,21 +198,19 @@ export default function ListingCard({ listing }) {
         {/* Save / Heart button — top right */}
         <button
           onClick={toggleSave}
-          className={`absolute top-2 right-2 z-20 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-all duration-200 hover:scale-110 active:scale-95 ${
+          disabled={toggling}
+          className={`absolute top-2 right-2 z-20 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-all duration-200 hover:scale-110 active:scale-95 disabled:cursor-default ${
             saved ? 'bg-rose-500' : 'bg-white/90 backdrop-blur-sm'
-          }`}
+          } ${!isAuthenticated ? 'cursor-default' : ''}`}
           aria-label={saved ? 'Remove from saved' : 'Save listing'}
-          title={saved ? 'Saved' : 'Save listing'}
+          title={!isAuthenticated ? 'Log in to save listings' : saved ? 'Saved' : 'Save listing'}
         >
-          <svg
-            className="w-4 h-4"
+          <Heart
+            className={`w-4 h-4 transition-all duration-200 ${toggling ? 'scale-90' : ''}`}
             fill={saved ? 'white' : 'none'}
             stroke={saved ? 'white' : '#9ca3af'}
             strokeWidth={2}
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-          </svg>
+          />
         </button>
 
         {/* Image count — bottom right (only when multiple) */}

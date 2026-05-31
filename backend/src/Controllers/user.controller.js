@@ -1,3 +1,4 @@
+const mongoose = require('mongoose')
 const User    = require('../Models/User')
 const Listing = require('../Models/Listing')
 const ApiError = require('../Utils/ApiError')
@@ -55,6 +56,82 @@ exports.getProfile = async (req, res, next) => {
         hasListings:  listingCount > 0,
         accountAge:   Math.floor((Date.now() - new Date(user.createdAt)) / 86400000) >= 30,
       },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// POST /api/users/saved/:listingId  — toggle save/unsave (idempotent)
+// Uses $addToSet / $pull so duplicate saves are impossible at the DB level.
+// Also increments/decrements Listing.favoritesCount for accurate counts.
+exports.toggleSavedListing = async (req, res, next) => {
+  try {
+    const { listingId } = req.params
+
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      throw new ApiError(400, 'Invalid listing ID')
+    }
+
+    const listing = await Listing.findById(listingId)
+    if (!listing) throw new ApiError(404, 'Listing not found')
+
+    const user = await User.findById(req.user._id).select('savedListings')
+    if (!user) throw new ApiError(404, 'User not found')
+
+    const alreadySaved = user.savedListings.some(
+      id => id.toString() === listingId
+    )
+
+    if (alreadySaved) {
+      await User.updateOne(
+        { _id: req.user._id },
+        { $pull: { savedListings: listing._id } }
+      )
+      // Guard against going below 0
+      if (listing.favoritesCount > 0) {
+        await Listing.updateOne({ _id: listingId }, { $inc: { favoritesCount: -1 } })
+      }
+    } else {
+      await User.updateOne(
+        { _id: req.user._id },
+        { $addToSet: { savedListings: listing._id } }   // $addToSet prevents dupes
+      )
+      await Listing.updateOne({ _id: listingId }, { $inc: { favoritesCount: 1 } })
+    }
+
+    // Return the authoritative updated ID list so the frontend can sync
+    const updated = await User.findById(req.user._id).select('savedListings')
+
+    res.json({
+      saved:            !alreadySaved,
+      savedListingIds:  updated.savedListings.map(id => id.toString()),
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// GET /api/users/saved  — return full populated saved listings
+exports.getSavedListings = async (req, res, next) => {
+  try {
+    const user = await User
+      .findById(req.user._id)
+      .select('savedListings')
+      .populate({
+        path: 'savedListings',
+        populate: { path: 'seller', select: 'name profileImage trustScore' },
+        options: { sort: { createdAt: -1 } },
+      })
+
+    if (!user) throw new ApiError(404, 'User not found')
+
+    // Filter out any nulls caused by deleted listings
+    const listings = (user.savedListings || []).filter(Boolean)
+
+    res.json({
+      listings,
+      savedListingIds: listings.map(l => l._id.toString()),
     })
   } catch (err) {
     next(err)

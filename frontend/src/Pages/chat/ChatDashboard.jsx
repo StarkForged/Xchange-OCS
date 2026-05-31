@@ -2,12 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getConversations, getMessages } from '../../features/chat/chat.service'
-import { getListingById } from '../../features/listings/listings.service'
 import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
-// ── Helpers ──────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 const timeAgo = (ts) => {
   if (!ts) return ''
@@ -20,18 +19,6 @@ const timeAgo = (ts) => {
   if (hours < 24) return `${hours}h`
   if (days  < 7)  return `${days}d`
   return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-}
-
-const formatSellerName = (seller) => {
-  if (!seller) return 'Seller'
-  if (typeof seller === 'object') return seller.name || 'Seller'
-  return 'Seller'
-}
-
-const getSellerId = (seller) => {
-  if (!seller) return null
-  if (typeof seller === 'object') return String(seller._id)
-  return seller
 }
 
 const formatTime = (ts) => {
@@ -64,6 +51,18 @@ const buildGroups = (msgs) => {
   return items
 }
 
+// Keep deleted messages even though their text is a placeholder
+const dedup = (msgs) => {
+  const seen = new Set()
+  return msgs.filter((m) => {
+    if (!m?.id) return false
+    if (!m.isDeleted && !m?.text?.trim()) return false
+    if (seen.has(m.id)) return false
+    seen.add(m.id)
+    return true
+  })
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────
 
 function SidebarSkeleton() {
@@ -92,66 +91,110 @@ function EmptyPanel({ onBrowse }) {
           Select a conversation to start chatting
         </p>
       </div>
-      <button
-        onClick={onBrowse}
-        className="mt-1 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-      >
+      <button onClick={onBrowse} className="mt-1 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
         Browse listings →
       </button>
     </div>
   )
 }
 
-// Dedup messages by id, strip empty
-const dedup = (msgs) => {
-  const seen = new Set()
-  return msgs.filter((m) => {
-    if (!m?.id || !m?.text?.trim()) return false
-    if (seen.has(m.id)) return false
-    seen.add(m.id)
-    return true
-  })
+function EmptyTab({ tab, onBrowse }) {
+  const isBuying = tab === 'buying'
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6 py-12">
+      <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      </div>
+      <div>
+        <p className="text-sm font-bold text-gray-600 mb-1">
+          {isBuying ? 'No buying conversations' : 'No selling conversations'}
+        </p>
+        <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
+          {isBuying
+            ? 'Browse listings and message a seller to get started'
+            : 'Buyers will appear here when they message you about your listings'}
+        </p>
+      </div>
+      {isBuying && (
+        <button onClick={onBrowse} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+          Browse listings →
+        </button>
+      )}
+    </div>
+  )
+}
+
+function MessageMenu({ item, mine, onCopy, onDelete }) {
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className={`
+        absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[160px]
+        ${mine ? 'right-0' : 'left-0'} bottom-full mb-1
+      `}
+    >
+      {!item.isDeleted && (
+        <button
+          onClick={onCopy}
+          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Copy Message
+        </button>
+      )}
+      {mine && !item.isDeleted && (
+        <button
+          onClick={onDelete}
+          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete Message
+        </button>
+      )}
+    </div>
+  )
 }
 
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function ChatDashboard() {
   const navigate = useNavigate()
-  const { user }  = useAuthStore()
+  const { user } = useAuthStore()
 
   // Sidebar
   const [conversations, setConversations] = useState([])
   const [loadingConvos, setLoadingConvos] = useState(true)
-  const [activeId, setActiveId]           = useState(null)
+  const [activeTab, setActiveTab]         = useState('buying') // 'buying' | 'selling'
+  const [activeId, setActiveId]           = useState(null)     // listingId
   const [activeChatId, setActiveChatId]   = useState(null)
 
   // Active chat
-  const [activeListing, setActiveListing]     = useState(null)
-  const [activeMessages, setActiveMessages]   = useState([])
-  const [loadingChat, setLoadingChat]         = useState(false)
-  const [inputText, setInputText]             = useState('')
+  const [activeMessages, setActiveMessages] = useState([])
+  const [loadingChat, setLoadingChat]       = useState(false)
+  const [inputText, setInputText]           = useState('')
 
-  const bottomRef   = useRef(null)
-  const inputRef    = useRef(null)
-  // Stable ref so socket effect can read chatId without being in deps
+  // Message action menu
+  const [hoveredMsgId, setHoveredMsgId] = useState(null)
+  const [menuMsgId, setMenuMsgId]       = useState(null)
+
+  const bottomRef       = useRef(null)
+  const inputRef        = useRef(null)
   const activeChatIdRef = useRef(null)
 
-  // ── Load conversation list ──
+  // ── Load conversation list ─────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       setLoadingConvos(true)
       try {
         const convos = await getConversations()
-        const enriched = await Promise.all(
-          convos.map(async (c) => {
-            try {
-              const listing = await getListingById(c.listingId)
-              return { ...c, listing }
-            } catch { return null }
-          })
-        )
-        if (!cancelled) setConversations(enriched.filter(Boolean))
+        if (!cancelled) setConversations(convos)
       } catch {
         // silent
       } finally {
@@ -162,8 +205,7 @@ export default function ChatDashboard() {
     return () => { cancelled = true }
   }, [])
 
-  // ── Load chat when active conversation changes ──
-  // activeChatId is captured via ref so we can safely include activeId only
+  // ── Load messages when active conversation changes ─────────────────────
   useEffect(() => {
     if (!activeId) return
     const chatId = activeChatIdRef.current
@@ -174,15 +216,10 @@ export default function ChatDashboard() {
       setActiveMessages([])
       setInputText('')
       try {
-        const [listing, msgs] = await Promise.all([
-          getListingById(activeId),
-          getMessages(chatId),
-        ])
+        const msgs = await getMessages(chatId)
         if (!cancelled) {
-          setActiveListing(listing)
-          // Merge: preserve any realtime messages that arrived during load
           setActiveMessages((prev) => {
-            const dbIds = new Set(msgs.map((m) => m.id))
+            const dbIds  = new Set(msgs.map((m) => m.id))
             const extras = prev.filter((m) => m.id && !dbIds.has(m.id))
             return dedup([...msgs, ...extras])
           })
@@ -195,105 +232,154 @@ export default function ChatDashboard() {
     }
     load()
     return () => { cancelled = true }
-  }, [activeId, activeChatId])  // activeChatId as dep ensures re-load if it changes
+  }, [activeId, activeChatId])
 
-  // ── Scroll on initial load ──
   useEffect(() => {
     if (!loadingChat) bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [loadingChat])
 
-  // ── Smooth scroll on new message ──
   useEffect(() => {
     if (activeMessages.length > 0)
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeMessages.length])
 
-  // ── Socket: join room + receive real-time messages ──
+  // ── Socket: join room + receive messages + deletions ───────────────────
   useEffect(() => {
     if (!activeId || loadingChat) return
     const socket = getSocket()
     if (!socket.connected) socket.connect()
     socket.emit('join_chat', { listingId: activeId })
+
     const onReceive = (message) => {
       if (!message?.id || !message?.text?.trim()) return
       setActiveMessages((prev) => dedup([...prev, message]))
       setConversations((prev) =>
         prev.map((c) =>
-          c.listingId === activeId ? { ...c, lastMessage: message } : c
+          c.listingId === activeId
+            ? { ...c, lastMessage: { senderId: message.senderId, text: message.text, timestamp: message.timestamp } }
+            : c
         )
       )
     }
+    // Server acks sender's message with real DB id — replace temp id in state
+    const onSent = ({ tempId, realId, timestamp }) => {
+      setActiveMessages((prev) =>
+        prev.map((m) => m.id === tempId ? { ...m, id: realId, timestamp } : m)
+      )
+    }
+    const onDeleted = ({ messageId }) => {
+      setActiveMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, text: 'This message was deleted', isDeleted: true } : m
+        )
+      )
+    }
+
     socket.on('receive_message', onReceive)
+    socket.on('message_sent',    onSent)
+    socket.on('message_deleted', onDeleted)
     return () => {
       socket.emit('leave_chat', { listingId: activeId })
       socket.off('receive_message', onReceive)
+      socket.off('message_sent',    onSent)
+      socket.off('message_deleted', onDeleted)
     }
   }, [activeId, loadingChat])
 
-  // ── Disconnect socket on unmount ──
-  useEffect(() => {
-    return () => { getSocket().disconnect() }
-  }, [])
+  useEffect(() => { return () => { getSocket().disconnect() } }, [])
 
-  // ── Send ──
+  // ── Send ───────────────────────────────────────────────────────────────
   const handleSend = useCallback(() => {
     const text = inputText.trim()
-    if (!text || !user || !activeListing || !activeChatIdRef.current) return
+    if (!text || !user || !activeChatIdRef.current) return
     const newMsg = {
       id:        `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      senderId:  user._id,
+      senderId:  String(user._id),
       text,
       timestamp: new Date().toISOString(),
+      isDeleted: false,
     }
     setActiveMessages((prev) => dedup([...prev, newMsg]))
     setInputText('')
     inputRef.current?.focus()
     getSocket().emit('send_message', { listingId: activeId, chatId: activeChatIdRef.current, message: newMsg })
-
-    // Update sidebar preview
     setConversations((prev) =>
       prev.map((c) =>
-        c.listingId === activeId ? { ...c, lastMessage: newMsg } : c
+        c.listingId === activeId
+          ? { ...c, lastMessage: { senderId: newMsg.senderId, text: newMsg.text, timestamp: newMsg.timestamp } }
+          : c
       )
     )
-  }, [inputText, user, activeListing, activeId])
+  }, [inputText, user, activeId])
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
-  // ── Derived ──
-  const isMine       = (msg) => msg.senderId !== getSellerId(activeListing?.seller)
-  const isUnread     = (c)   => c.lastMessage?.senderId === getSellerId(c.listing?.seller)
-  const getPreview   = (c)   => {
+  // ── Delete (optimistic + socket) ───────────────────────────────────────
+  const handleDeleteMessage = useCallback((msg) => {
+    setMenuMsgId(null)
+    if (!activeChatIdRef.current) return
+    setActiveMessages((prev) =>
+      prev.map((m) =>
+        m.id === msg.id ? { ...m, text: 'This message was deleted', isDeleted: true } : m
+      )
+    )
+    getSocket().emit('delete_message', {
+      messageId: msg.id,
+      chatId:    activeChatIdRef.current,
+      listingId: activeId,
+      userId:    String(user?._id),
+    })
+  }, [activeId, user])
+
+  const handleCopyMessage = (text) => {
+    navigator.clipboard.writeText(text).catch(() => {})
+    setMenuMsgId(null)
+  }
+
+  // ── Derived ────────────────────────────────────────────────────────────
+  const isMine   = (msg) => String(msg.senderId) === String(user?._id)
+  const isUnread = (c)   => c.lastMessage != null && String(c.lastMessage.senderId) !== String(user?._id)
+  const getPreview = (c) => {
     const m = c.lastMessage
     if (!m?.text?.trim()) return 'No messages yet'
-    return m.senderId === getSellerId(c.listing?.seller) ? m.text : `You: ${m.text}`
+    if (m.text === 'This message was deleted') return 'Message deleted'
+    return String(m.senderId) === String(user?._id) ? `You: ${m.text}` : m.text
   }
 
-  const grouped     = buildGroups(activeMessages)
-  const canSend     = inputText.trim().length > 0
-  const sellerName  = formatSellerName(activeListing?.seller)
-  const listingImg  = activeListing?.images?.[0] ?? defaultImage
+  // Split by role
+  const buyingConvos  = conversations.filter((c) => c.sellerId !== String(user?._id))
+  const sellingConvos = conversations.filter((c) => c.sellerId === String(user?._id))
+  const tabConvos     = activeTab === 'buying' ? buyingConvos : sellingConvos
+
+  // Active chat derived data — listing is embedded in conversation, no extra fetch
+  const activeConvo      = conversations.find((c) => c.listingId === activeId)
+  const activeListing    = activeConvo?.listing || null
+  const otherParticipant = activeConvo?.participants?.find((p) => p._id !== String(user?._id))
+  const otherName        = otherParticipant?.name || 'User'
+
+  const grouped    = buildGroups(activeMessages)
+  const canSend    = inputText.trim().length > 0
+  const listingImg = activeListing?.images?.[0] ?? defaultImage
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-white overflow-hidden">
+    <div
+      className="flex h-[calc(100vh-4rem)] bg-white overflow-hidden"
+      onClick={() => setMenuMsgId(null)}
+    >
 
-      {/* ════════════════════════════════════════
+      {/* ═══════════════════════════════════════
           LEFT SIDEBAR
-      ════════════════════════════════════════ */}
+      ═══════════════════════════════════════ */}
       <aside className={`
-        flex-shrink-0 w-full md:w-[320px] border-r border-gray-200
-        flex flex-col bg-white
+        flex-shrink-0 w-full md:w-[320px] border-r border-gray-200 flex flex-col bg-white
         ${activeId ? 'hidden md:flex' : 'flex'}
       `}>
 
         {/* Sidebar header */}
-        <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-          <div className="flex items-center justify-between mb-1">
+        <div className="px-5 pt-5 pb-3 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">Messages</h1>
             <button
               onClick={() => navigate('/listings')}
@@ -305,48 +391,60 @@ export default function ChatDashboard() {
               </svg>
             </button>
           </div>
-          <p className="text-xs text-gray-400 font-medium">
-            {loadingConvos
-              ? 'Loading…'
-              : `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`}
-          </p>
+
+          {/* Buying / Selling tab bar */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {[
+              { id: 'buying',  label: 'Buying',  count: buyingConvos.length },
+              { id: 'selling', label: 'Selling', count: sellingConvos.length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setActiveId(null) // close open chat when switching tabs
+                }}
+                className={`
+                  flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg
+                  text-sm font-semibold transition-all duration-150
+                  ${activeTab === tab.id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'}
+                `}
+              >
+                {tab.label}
+                {!loadingConvos && tab.count > 0 && (
+                  <span className={`
+                    text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center
+                    ${activeTab === tab.id
+                      ? 'bg-indigo-100 text-indigo-600'
+                      : 'bg-gray-200 text-gray-500'}
+                  `}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Conversation list */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* Loading skeletons */}
           {loadingConvos && (
-            <>{[1, 2, 3, 4].map((i) => <SidebarSkeleton key={i} />)}</>
+            <>{[1, 2, 3].map((i) => <SidebarSkeleton key={i} />)}</>
           )}
 
-          {/* Empty sidebar */}
-          {!loadingConvos && conversations.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6 py-16">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-gray-600 mb-1">No messages yet</p>
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Start a conversation from any listing
-                </p>
-              </div>
-              <button
-                onClick={() => navigate('/listings')}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                Browse listings →
-              </button>
-            </div>
+          {!loadingConvos && tabConvos.length === 0 && (
+            <EmptyTab tab={activeTab} onBrowse={() => navigate('/listings')} />
           )}
 
-          {/* Conversation items */}
-          {!loadingConvos && conversations.map((convo) => {
-            const unread   = isUnread(convo)
-            const isActive = activeId === convo.listingId
+          {!loadingConvos && tabConvos.map((convo) => {
+            const unread    = isUnread(convo)
+            const isActive  = activeId === convo.listingId
+            // Always show the OTHER participant's name and role label
+            const other     = convo.participants?.find((p) => p._id !== String(user?._id))
+            const otherLabel= activeTab === 'buying' ? 'Seller' : 'Buyer'
 
             return (
               <button
@@ -364,7 +462,7 @@ export default function ChatDashboard() {
                     : 'hover:bg-gray-50 border-l-transparent'}
                 `}
               >
-                {/* Round avatar (listing image) */}
+                {/* Listing image as avatar */}
                 <div className="relative flex-shrink-0">
                   <img
                     src={convo.listing?.images?.[0] ?? defaultImage}
@@ -376,13 +474,14 @@ export default function ChatDashboard() {
                   )}
                 </div>
 
-                {/* Text */}
+                {/* Text block */}
                 <div className="flex-1 min-w-0">
+                  {/* Row 1: participant name + timestamp */}
                   <div className="flex items-baseline justify-between gap-2 mb-0.5">
                     <p className={`text-sm truncate ${
-                      unread && !isActive ? 'font-bold text-gray-900' : 'font-medium text-gray-800'
+                      unread && !isActive ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'
                     }`}>
-                      {convo.listing?.title || 'Listing'}
+                      {other?.name || 'User'}
                     </p>
                     <span className={`text-[10px] flex-shrink-0 tabular-nums ${
                       unread && !isActive ? 'font-bold text-indigo-500' : 'text-gray-400'
@@ -390,6 +489,13 @@ export default function ChatDashboard() {
                       {timeAgo(convo.lastMessage?.timestamp)}
                     </span>
                   </div>
+
+                  {/* Row 2: role label + listing title */}
+                  <p className="text-[11px] text-indigo-500 font-medium truncate mb-0.5">
+                    {otherLabel} · {convo.listing?.title || 'Listing'}
+                  </p>
+
+                  {/* Row 3: message preview */}
                   <p className={`text-xs truncate leading-relaxed ${
                     unread && !isActive ? 'text-gray-700 font-medium' : 'text-gray-400'
                   }`}>
@@ -402,15 +508,13 @@ export default function ChatDashboard() {
         </div>
       </aside>
 
-      {/* ════════════════════════════════════════
+      {/* ═══════════════════════════════════════
           RIGHT PANEL
-      ════════════════════════════════════════ */}
+      ═══════════════════════════════════════ */}
       <main className={`flex-1 flex flex-col min-w-0 ${activeId ? 'flex' : 'hidden md:flex'}`}>
 
-        {/* ── No conversation selected ── */}
         {!activeId && <EmptyPanel onBrowse={() => navigate('/listings')} />}
 
-        {/* ── Chat loading ── */}
         {activeId && loadingChat && (
           <div className="flex-1 flex items-center justify-center gap-3 text-gray-400 bg-gray-50/60">
             <svg className="animate-spin h-6 w-6 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -421,14 +525,12 @@ export default function ChatDashboard() {
           </div>
         )}
 
-        {/* ── Active chat ── */}
         {activeId && !loadingChat && (
           <>
             {/* Chat header */}
             <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-10">
               <div className="px-4 py-3 flex items-center gap-3">
 
-                {/* Mobile: back to list */}
                 <button
                   onClick={() => setActiveId(null)}
                   className="md:hidden flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
@@ -438,25 +540,18 @@ export default function ChatDashboard() {
                   </svg>
                 </button>
 
-                {/* Seller avatar + online */}
                 <div className="relative flex-shrink-0">
-                  <img
-                    src={defaultAvatar}
-                    alt="Seller"
-                    className="w-10 h-10 rounded-full object-cover border border-gray-200"
-                  />
+                  <img src={defaultAvatar} alt={otherName} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white" />
                 </div>
 
-                {/* Seller name + status */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900 leading-tight truncate">
-                    {sellerName}
+                  <p className="text-sm font-bold text-gray-900 leading-tight truncate">{otherName}</p>
+                  <p className="text-xs text-gray-400 font-medium">
+                    {activeConvo?.sellerId === String(user?._id) ? 'Buyer' : 'Seller'}
                   </p>
-                  <p className="text-xs text-emerald-600 font-medium">Online</p>
                 </div>
 
-                {/* Listing context (right) */}
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="hidden sm:block text-right">
                     <p className="text-xs text-gray-400 truncate max-w-[160px] leading-tight">
@@ -481,7 +576,6 @@ export default function ChatDashboard() {
             <div className="flex-1 overflow-y-auto bg-gray-50/60">
               <div className="px-4 py-6 max-w-3xl mx-auto">
 
-                {/* Empty chat state */}
                 {activeMessages.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
                     <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
@@ -492,14 +586,13 @@ export default function ChatDashboard() {
                     <div>
                       <p className="font-semibold text-gray-600 text-sm mb-1">Start the conversation</p>
                       <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
-                        Ask {sellerName} about{' '}
+                        Ask {otherName} about{' '}
                         <span className="font-medium text-gray-600">{activeListing?.title}</span>
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Message list */}
                 <div>
                   {grouped.map((item, index) => {
 
@@ -515,14 +608,14 @@ export default function ChatDashboard() {
                       )
                     }
 
-                    // Grouping: consecutive same-sender messages get tighter spacing
                     const prev = grouped[index - 1]
                     const next = grouped[index + 1]
                     const isPrevSame = prev?.type === 'msg' && prev.senderId === item.senderId
                     const isNextSame = next?.type === 'msg' && next.senderId === item.senderId
-                    const mine = isMine(item)
+                    const mine       = isMine(item)
+                    const isMenuOpen = menuMsgId === item.id
+                    const showMenu   = hoveredMsgId === item.id || isMenuOpen
 
-                    // Bubble corner rounding based on position in group
                     const mineCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-r-lg'
                       : isPrevSame  ? 'rounded-2xl rounded-tr-lg'
                       : isNextSame  ? 'rounded-2xl rounded-br-lg'
@@ -533,15 +626,49 @@ export default function ChatDashboard() {
                       : isNextSame  ? 'rounded-2xl rounded-bl-lg'
                       : 'rounded-2xl rounded-bl-sm'
 
+                    const dotBtn = (
+                      <div className="relative flex-shrink-0 self-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMenuMsgId(isMenuOpen ? null : item.id) }}
+                          className={`
+                            w-7 h-7 rounded-full flex items-center justify-center
+                            hover:bg-gray-200 text-gray-400 transition-opacity duration-150
+                            ${showMenu ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+                          `}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="5" cy="12" r="1.5" />
+                            <circle cx="12" cy="12" r="1.5" />
+                            <circle cx="19" cy="12" r="1.5" />
+                          </svg>
+                        </button>
+                        {isMenuOpen && (
+                          <MessageMenu
+                            item={item}
+                            mine={mine}
+                            onCopy={() => handleCopyMessage(item.text)}
+                            onDelete={() => handleDeleteMessage(item)}
+                          />
+                        )}
+                      </div>
+                    )
+
                     return mine ? (
-                      /* ── Sent (right) ── */
                       <div
                         key={item.id}
-                        className={`flex justify-end ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}
+                        className={`flex justify-end items-end gap-1.5 ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}
+                        onMouseEnter={() => setHoveredMsgId(item.id)}
+                        onMouseLeave={() => setHoveredMsgId(null)}
                       >
+                        {dotBtn}
                         <div className="max-w-[68%] sm:max-w-[55%]">
-                          <div className={`bg-indigo-600 text-white px-4 py-2.5 shadow-sm ${mineCorners}`}>
-                            <p className="text-sm leading-relaxed break-words">{item.text}</p>
+                          <div className={`
+                            px-4 py-2.5 shadow-sm ${mineCorners}
+                            ${item.isDeleted ? 'bg-gray-100 border border-gray-200' : 'bg-indigo-600'}
+                          `}>
+                            <p className={`text-sm leading-relaxed break-words ${item.isDeleted ? 'text-gray-400 italic' : 'text-white'}`}>
+                              {item.text}
+                            </p>
                           </div>
                           {!isNextSame && (
                             <p className="text-[10px] text-gray-400 mt-1 text-right pr-1 select-none">
@@ -551,24 +678,25 @@ export default function ChatDashboard() {
                         </div>
                       </div>
                     ) : (
-                      /* ── Received (left) ── */
                       <div
                         key={item.id}
                         className={`flex items-end gap-2 ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}
+                        onMouseEnter={() => setHoveredMsgId(item.id)}
+                        onMouseLeave={() => setHoveredMsgId(null)}
                       >
-                        {/* Avatar: only on last in group, else spacer */}
                         {!isNextSame ? (
-                          <img
-                            src={defaultAvatar}
-                            alt="Seller"
-                            className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-5 shadow-sm border border-gray-200"
-                          />
+                          <img src={defaultAvatar} alt={otherName} className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-5 shadow-sm border border-gray-200" />
                         ) : (
                           <div className="w-7 flex-shrink-0" />
                         )}
                         <div className="max-w-[68%] sm:max-w-[55%]">
-                          <div className={`bg-white border border-gray-200 text-gray-800 px-4 py-2.5 shadow-sm ${theirCorners}`}>
-                            <p className="text-sm leading-relaxed break-words">{item.text}</p>
+                          <div className={`
+                            px-4 py-2.5 shadow-sm ${theirCorners}
+                            ${item.isDeleted ? 'bg-gray-50 border border-gray-200' : 'bg-white border border-gray-200'}
+                          `}>
+                            <p className={`text-sm leading-relaxed break-words ${item.isDeleted ? 'text-gray-400 italic' : 'text-gray-800'}`}>
+                              {item.text}
+                            </p>
                           </div>
                           {!isNextSame && (
                             <p className="text-[10px] text-gray-400 mt-1 pl-1 select-none">
@@ -576,6 +704,7 @@ export default function ChatDashboard() {
                             </p>
                           )}
                         </div>
+                        {dotBtn}
                       </div>
                     )
                   })}
@@ -588,21 +717,17 @@ export default function ChatDashboard() {
             {/* Input area */}
             <div className="flex-shrink-0 bg-white border-t border-gray-100 px-4 py-3">
               <div className="flex items-end gap-2 max-w-3xl mx-auto">
-
-                {/* Rounded-full input */}
                 <div className="flex-1 bg-gray-100 rounded-full px-5 py-3 focus-within:ring-2 focus-within:ring-indigo-300 focus-within:bg-white transition-all duration-150">
                   <textarea
                     ref={inputRef}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={`Message ${sellerName}…`}
+                    placeholder={`Message ${otherName}…`}
                     rows={1}
                     className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 resize-none outline-none max-h-24 leading-relaxed"
                   />
                 </div>
-
-                {/* Rounded-full send button */}
                 <button
                   onClick={handleSend}
                   disabled={!canSend}
@@ -614,19 +739,11 @@ export default function ChatDashboard() {
                       : 'bg-gray-200 cursor-not-allowed'}
                   `}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className={`h-5 w-5 ${canSend ? 'text-white' : 'text-gray-400'}`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${canSend ? 'text-white' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
                 </button>
               </div>
-
               <p className="text-center text-[10px] text-gray-400 mt-2 select-none">
                 Enter to send · Shift+Enter for new line
               </p>

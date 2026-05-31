@@ -10,18 +10,6 @@ import defaultImage from '../../assets/images/products/iphone13.jpg'
 const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')
 
-const formatSellerName = (seller) => {
-  if (!seller) return 'Seller'
-  if (typeof seller === 'object') return seller.name || 'Seller'
-  return 'Seller'
-}
-
-const getSellerId = (seller) => {
-  if (!seller) return null
-  if (typeof seller === 'object') return String(seller._id)
-  return seller
-}
-
 const formatTime = (ts) => {
   if (!ts) return ''
   return new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
@@ -52,34 +40,78 @@ const groupMessages = (msgs) => {
   return items
 }
 
-// Dedup by id, drop messages with no text
+// Dedup by id; keep deleted messages even though their text may be a placeholder
 const dedup = (msgs) => {
   const seen = new Set()
   return msgs.filter((m) => {
-    if (!m?.id || !m?.text?.trim()) return false
+    if (!m?.id) return false
+    if (!m.isDeleted && !m?.text?.trim()) return false
     if (seen.has(m.id)) return false
     seen.add(m.id)
     return true
   })
 }
 
+// ── Message action menu ───────────────────────────────────────────────────
+
+function MessageMenu({ item, mine, onCopy, onDelete }) {
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className={`
+        absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[160px]
+        ${mine ? 'right-0' : 'left-0'} bottom-full mb-1
+      `}
+    >
+      {!item.isDeleted && (
+        <button
+          onClick={onCopy}
+          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Copy Message
+        </button>
+      )}
+      {mine && !item.isDeleted && (
+        <button
+          onClick={onDelete}
+          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete Message
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────
+
 export default function ChatPage() {
   const { listingId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
-  const [chatId, setChatId]             = useState(null)
-  const [listing, setListing]           = useState(null)
-  const [messages, setMessages]         = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [inputText, setInputText]       = useState('')
-  const [sellerOnline, setSellerOnline] = useState(false)
-  const [sellerTyping, setSellerTyping] = useState(false)
+  const [chatId, setChatId]                 = useState(null)
+  const [chatParticipants, setChatParticipants] = useState([])
+  const [listing, setListing]               = useState(null)
+  const [messages, setMessages]             = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [inputText, setInputText]           = useState('')
+  const [sellerOnline, setSellerOnline]     = useState(false)
+  const [sellerTyping, setSellerTyping]     = useState(false)
+
+  // Message action menu
+  const [hoveredMsgId, setHoveredMsgId] = useState(null)
+  const [menuMsgId, setMenuMsgId]       = useState(null)
 
   const bottomRef   = useRef(null)
   const inputRef    = useRef(null)
   const typingTimer = useRef(null)
-  // Keep chatId accessible in socket effect without adding it as a dep
   const chatIdRef   = useRef(null)
 
   /* ── Get/create chat, then load listing + history ── */
@@ -93,6 +125,10 @@ export default function ChatPage() {
         const cid = String(chat._id)
         setChatId(cid)
         chatIdRef.current = cid
+        // Store populated participants so we can find the other person
+        setChatParticipants(
+          (chat.participants || []).map((p) => ({ _id: String(p._id), name: p.name || 'User' }))
+        )
 
         const [listingData, msgs] = await Promise.all([
           getListingById(listingId),
@@ -100,7 +136,6 @@ export default function ChatPage() {
         ])
         if (!cancelled) {
           setListing(listingData)
-          // Merge: keep any realtime messages that arrived during loading
           setMessages((prev) => {
             const dbIds = new Set(msgs.map((m) => m.id))
             const extras = prev.filter((m) => m.id && !dbIds.has(m.id))
@@ -117,12 +152,10 @@ export default function ChatPage() {
     return () => { cancelled = true }
   }, [listingId])
 
-  /* ── Scroll to bottom on load ── */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [loading])
 
-  /* ── Scroll on new message ── */
   useEffect(() => {
     if (messages.length > 0)
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -137,18 +170,37 @@ export default function ChatPage() {
     socket.emit('register', { userId: user?._id })
     socket.emit('join_chat', { listingId })
 
-    const sellerIdVal = getSellerId(listing?.seller)
+    // Track the other participant for presence events
+    const other = chatParticipants.find((p) => p._id !== String(user?._id))
+    const otherIdVal = other?._id
 
     const onReceive    = (msg)    => {
       if (!msg?.id || !msg?.text?.trim()) return
       setMessages((prev) => dedup([...prev, msg]))
     }
-    const onOnline     = (userId) => { if (userId === sellerIdVal) setSellerOnline(true) }
-    const onOffline    = (userId) => { if (userId === sellerIdVal) setSellerOnline(false) }
-    const onTyping     = (userId) => { if (userId === sellerIdVal) setSellerTyping(true) }
-    const onStopTyping = (userId) => { if (userId === sellerIdVal) setSellerTyping(false) }
+    // Server acks the sender's own message with the real DB id
+    const onSent = ({ tempId, realId, timestamp }) => {
+      setMessages((prev) =>
+        prev.map((m) => m.id === tempId ? { ...m, id: realId, timestamp } : m)
+      )
+    }
+    const onDeleted    = ({ messageId }) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, text: 'This message was deleted', isDeleted: true }
+            : m
+        )
+      )
+    }
+    const onOnline     = (userId) => { if (userId === otherIdVal) setSellerOnline(true) }
+    const onOffline    = (userId) => { if (userId === otherIdVal) setSellerOnline(false) }
+    const onTyping     = (userId) => { if (userId === otherIdVal) setSellerTyping(true) }
+    const onStopTyping = (userId) => { if (userId === otherIdVal) setSellerTyping(false) }
 
     socket.on('receive_message',  onReceive)
+    socket.on('message_sent',     onSent)
+    socket.on('message_deleted',  onDeleted)
     socket.on('user_online',      onOnline)
     socket.on('user_offline',     onOffline)
     socket.on('user_typing',      onTyping)
@@ -157,14 +209,15 @@ export default function ChatPage() {
     return () => {
       socket.emit('leave_chat', { listingId })
       socket.off('receive_message',  onReceive)
+      socket.off('message_sent',     onSent)
+      socket.off('message_deleted',  onDeleted)
       socket.off('user_online',      onOnline)
       socket.off('user_offline',     onOffline)
       socket.off('user_typing',      onTyping)
       socket.off('user_stop_typing', onStopTyping)
     }
-  }, [listingId, loading])  // loading guards ensure one listener at a time
+  }, [listingId, loading, chatParticipants, user?._id])
 
-  /* ── Disconnect socket on unmount ── */
   useEffect(() => {
     return () => { getSocket().disconnect() }
   }, [])
@@ -174,9 +227,10 @@ export default function ChatPage() {
     if (!text || !user || !listing || !chatIdRef.current) return
     const newMsg = {
       id:        `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      senderId:  user._id,
+      senderId:  String(user._id),
       text,
       timestamp: new Date().toISOString(),
+      isDeleted: false,
     }
     setMessages((prev) => dedup([...prev, newMsg]))
     setInputText('')
@@ -204,8 +258,36 @@ export default function ChatPage() {
     }, 1500)
   }
 
-  const isMine     = (msg) => msg.senderId !== getSellerId(listing?.seller)
-  const sellerName = formatSellerName(listing?.seller)
+  const handleDeleteMessage = useCallback((msg) => {
+    setMenuMsgId(null)
+    if (!chatIdRef.current) return
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msg.id
+          ? { ...m, text: 'This message was deleted', isDeleted: true }
+          : m
+      )
+    )
+    getSocket().emit('delete_message', {
+      messageId: msg.id,
+      chatId:    chatIdRef.current,
+      listingId,
+      userId:    String(user?._id),
+    })
+  }, [listingId, user])
+
+  const handleCopyMessage = (text) => {
+    navigator.clipboard.writeText(text).catch(() => {})
+    setMenuMsgId(null)
+  }
+
+  // Fix: isMine uses current user's ID, not seller comparison
+  const isMine = (msg) => String(msg.senderId) === String(user?._id)
+
+  // Other participant derived from chat.participants
+  const otherParticipant = chatParticipants.find((p) => p._id !== String(user?._id))
+  const otherName        = otherParticipant?.name || 'User'
+
   const listingImg = listing?.images?.[0] ?? defaultImage
   const grouped    = groupMessages(messages)
   const canSend    = inputText.trim().length > 0
@@ -223,7 +305,10 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-white">
+    <div
+      className="flex flex-col h-[calc(100vh-4rem)] bg-white"
+      onClick={() => setMenuMsgId(null)}
+    >
 
       {/* Header */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-10">
@@ -237,13 +322,15 @@ export default function ChatPage() {
             </svg>
           </button>
 
+          {/* Other participant avatar + presence */}
           <div className="relative flex-shrink-0">
-            <img src={defaultAvatar} alt="Seller" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+            <img src={defaultAvatar} alt={otherName} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
             <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white transition-colors duration-300 ${sellerOnline ? 'bg-emerald-400' : 'bg-gray-300'}`} />
           </div>
 
+          {/* Other participant name + typing */}
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 text-sm leading-tight truncate">{sellerName}</p>
+            <p className="font-bold text-gray-900 text-sm leading-tight truncate">{otherName}</p>
             {sellerTyping ? (
               <p className="text-xs text-indigo-500 font-medium flex items-center gap-1">
                 <span className="flex gap-0.5">
@@ -260,6 +347,7 @@ export default function ChatPage() {
             )}
           </div>
 
+          {/* Listing context */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="hidden sm:block text-right">
               <p className="text-xs text-gray-400 truncate max-w-[160px] leading-tight">{listing?.title}</p>
@@ -283,7 +371,7 @@ export default function ChatPage() {
               <div>
                 <p className="font-semibold text-gray-600 text-sm mb-1">Start the conversation</p>
                 <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
-                  Ask {sellerName} about <span className="font-medium text-gray-600">{listing?.title}</span>
+                  Ask {otherName} about <span className="font-medium text-gray-600">{listing?.title}</span>
                 </p>
               </div>
             </div>
@@ -300,36 +388,109 @@ export default function ChatPage() {
                   </div>
                 )
               }
+
               const prev = grouped[index - 1]
               const next = grouped[index + 1]
               const isPrevSame = prev?.type === 'msg' && prev.senderId === item.senderId
               const isNextSame = next?.type === 'msg' && next.senderId === item.senderId
-              const mine = isMine(item)
-              const mineCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-r-lg' : isPrevSame ? 'rounded-2xl rounded-tr-lg' : isNextSame ? 'rounded-2xl rounded-br-lg' : 'rounded-2xl rounded-br-sm'
-              const theirCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-l-lg' : isPrevSame ? 'rounded-2xl rounded-tl-lg' : isNextSame ? 'rounded-2xl rounded-bl-lg' : 'rounded-2xl rounded-bl-sm'
+              const mine       = isMine(item)
+              const isMenuOpen = menuMsgId === item.id
+              const showMenu   = hoveredMsgId === item.id || isMenuOpen
+
+              const mineCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-r-lg'
+                : isPrevSame  ? 'rounded-2xl rounded-tr-lg'
+                : isNextSame  ? 'rounded-2xl rounded-br-lg'
+                : 'rounded-2xl rounded-br-sm'
+
+              const theirCorners = isPrevSame && isNextSame ? 'rounded-2xl rounded-l-lg'
+                : isPrevSame  ? 'rounded-2xl rounded-tl-lg'
+                : isNextSame  ? 'rounded-2xl rounded-bl-lg'
+                : 'rounded-2xl rounded-bl-sm'
+
+              const dotBtn = (
+                <div className="relative flex-shrink-0 self-center">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMenuMsgId(isMenuOpen ? null : item.id)
+                    }}
+                    className={`
+                      w-7 h-7 rounded-full flex items-center justify-center
+                      hover:bg-gray-200 text-gray-400 transition-opacity duration-150
+                      ${showMenu ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+                    `}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                      <circle cx="5" cy="12" r="1.5" />
+                      <circle cx="12" cy="12" r="1.5" />
+                      <circle cx="19" cy="12" r="1.5" />
+                    </svg>
+                  </button>
+                  {isMenuOpen && (
+                    <MessageMenu
+                      item={item}
+                      mine={mine}
+                      onCopy={() => handleCopyMessage(item.text)}
+                      onDelete={() => handleDeleteMessage(item)}
+                    />
+                  )}
+                </div>
+              )
 
               return mine ? (
-                <div key={item.id} className={`flex justify-end ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}>
+                <div
+                  key={item.id}
+                  className={`flex justify-end items-end gap-1.5 ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}
+                  onMouseEnter={() => setHoveredMsgId(item.id)}
+                  onMouseLeave={() => setHoveredMsgId(null)}
+                >
+                  {dotBtn}
                   <div className="max-w-[70%] sm:max-w-[55%]">
-                    <div className={`bg-indigo-600 text-white px-4 py-2.5 shadow-sm ${mineCorners}`}>
-                      <p className="text-sm leading-relaxed break-words">{item.text}</p>
+                    <div className={`
+                      px-4 py-2.5 shadow-sm ${mineCorners}
+                      ${item.isDeleted ? 'bg-gray-100 border border-gray-200' : 'bg-indigo-600'}
+                    `}>
+                      <p className={`text-sm leading-relaxed break-words ${item.isDeleted ? 'text-gray-400 italic' : 'text-white'}`}>
+                        {item.text}
+                      </p>
                     </div>
-                    {!isNextSame && <p className="text-[10px] text-gray-400 mt-1 text-right pr-1 select-none">{formatTime(item.timestamp)}</p>}
+                    {!isNextSame && (
+                      <p className="text-[10px] text-gray-400 mt-1 text-right pr-1 select-none">
+                        {formatTime(item.timestamp)}
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
-                <div key={item.id} className={`flex items-end gap-2 ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}>
+                <div
+                  key={item.id}
+                  className={`flex items-end gap-2 ${isPrevSame ? 'mt-0.5' : 'mt-4'}`}
+                  onMouseEnter={() => setHoveredMsgId(item.id)}
+                  onMouseLeave={() => setHoveredMsgId(null)}
+                >
                   {!isNextSame ? (
-                    <img src={defaultAvatar} alt="Seller" className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-5 shadow-sm border border-gray-200" />
+                    <img src={defaultAvatar} alt={otherName} className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-5 shadow-sm border border-gray-200" />
                   ) : (
                     <div className="w-7 flex-shrink-0" />
                   )}
                   <div className="max-w-[70%] sm:max-w-[55%]">
-                    <div className={`bg-white border border-gray-200 text-gray-800 px-4 py-2.5 shadow-sm ${theirCorners}`}>
-                      <p className="text-sm leading-relaxed break-words">{item.text}</p>
+                    <div className={`
+                      px-4 py-2.5 shadow-sm ${theirCorners}
+                      ${item.isDeleted
+                        ? 'bg-gray-50 border border-gray-200'
+                        : 'bg-white border border-gray-200'}
+                    `}>
+                      <p className={`text-sm leading-relaxed break-words ${item.isDeleted ? 'text-gray-400 italic' : 'text-gray-800'}`}>
+                        {item.text}
+                      </p>
                     </div>
-                    {!isNextSame && <p className="text-[10px] text-gray-400 mt-1 pl-1 select-none">{formatTime(item.timestamp)}</p>}
+                    {!isNextSame && (
+                      <p className="text-[10px] text-gray-400 mt-1 pl-1 select-none">
+                        {formatTime(item.timestamp)}
+                      </p>
+                    )}
                   </div>
+                  {dotBtn}
                 </div>
               )
             })}
@@ -348,7 +509,7 @@ export default function ChatPage() {
               value={inputText}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={`Message ${sellerName}…`}
+              placeholder={`Message ${otherName}…`}
               rows={1}
               className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 resize-none outline-none max-h-24 leading-relaxed"
             />
@@ -363,7 +524,9 @@ export default function ChatPage() {
             </svg>
           </button>
         </div>
-        <p className="text-center text-[10px] text-gray-400 mt-2 select-none">Enter to send · Shift+Enter for new line</p>
+        <p className="text-center text-[10px] text-gray-400 mt-2 select-none">
+          Enter to send · Shift+Enter for new line
+        </p>
       </div>
     </div>
   )

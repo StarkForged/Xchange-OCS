@@ -17,3 +17,9 @@ export const getMessagesAPI = async (chatId) => {
   const response = await api.get(`/chats/${chatId}/messages`)
   return response.data
 }
+
+// DELETE /api/chats/:chatId/messages/:messageId
+export const deleteMessageAPI = async (chatId, messageId) => {
+  const response = await api.delete(`/chats/${chatId}/messages/${messageId}`)
+  return response.data
+}

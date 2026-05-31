@@ -15,9 +15,9 @@ export default function ListingsPage() {
   const [error, setError] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
 
-  const [search, setSearch] = useState(() => searchParams.get('q') || '')
-  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get('q') || '')
-  const [category, setCategory] = useState(() => searchParams.get('cat') || 'all')
+  const [search, setSearch] = useState(searchParams.get('q') || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('q') || '')
+  const [category, setCategory] = useState(searchParams.get('cat') || 'all')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState('latest')
@@ -33,6 +33,15 @@ export default function ListingsPage() {
     setMaxPrice('')
     setSortBy('latest')
   }
+
+  // Sync state when URL params change (e.g. navigation from category links)
+  useEffect(() => {
+    const q   = searchParams.get('q')   || ''
+    const cat = searchParams.get('cat') || 'all'
+    setSearch(q)
+    setDebouncedSearch(q)
+    setCategory(cat)
+  }, [searchParams])
 
   // Debounce search — 400ms delay before triggering API call
   useEffect(() => {

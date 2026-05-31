@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import Navbar from '../components/layout/Navbar'
 
-// ── Mobile Bottom Navigation ──────────────────────────────────────────────
+// ── Mobile Bottom Navigation ───────────────────────────────────────────────
 
 const BOTTOM_NAV = [
   {
@@ -55,8 +55,8 @@ const BOTTOM_NAV = [
 
 function MobileBottomNav() {
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-      <div className="flex items-stretch h-16">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur-md border-t border-gray-100/80 shadow-[0_-4px_24px_rgba(0,0,0,0.08)]">
+      <div className="flex items-stretch h-16 max-w-md mx-auto">
         {BOTTOM_NAV.map((item) => {
           if (item.sell) {
             return (
@@ -65,7 +65,7 @@ function MobileBottomNav() {
                 to={item.to}
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 group"
               >
-                <div className="w-11 h-11 rounded-2xl bg-indigo-600 group-hover:bg-indigo-700 flex items-center justify-center text-white shadow-lg shadow-indigo-200 transition-all duration-150 group-hover:scale-105 -mt-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-600 group-hover:bg-indigo-700 flex items-center justify-center text-white shadow-lg shadow-indigo-200/60 transition-all duration-200 group-hover:scale-105 group-hover:shadow-xl -mt-4">
                   {item.icon(false)}
                 </div>
                 <span className="text-[10px] font-bold text-indigo-600 mt-0.5">{item.label}</span>
@@ -78,15 +78,18 @@ function MobileBottomNav() {
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 ${
+                `flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors duration-150 ${
                   isActive ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
+                  {isActive && (
+                    <span className="absolute top-0 inset-x-1/4 h-0.5 bg-indigo-600 rounded-b-full" />
+                  )}
                   {item.icon(isActive)}
-                  <span className={`text-[10px] font-semibold ${isActive ? 'font-bold' : ''}`}>
+                  <span className={`text-[10px] ${isActive ? 'font-bold' : 'font-semibold'}`}>
                     {item.label}
                   </span>
                 </>
@@ -99,17 +102,26 @@ function MobileBottomNav() {
   )
 }
 
-// ── Main Layout ───────────────────────────────────────────────────────────
+// ── Main Layout ────────────────────────────────────────────────────────────
 
 export default function MainLayout() {
   const { pathname } = useLocation()
-  // Full-screen chat page manages its own height — hide bottom nav there
   const isFullscreenChat = pathname.startsWith('/chat/') && pathname !== '/chat'
+
+  // Homepage: no top padding — hero gradient extends to y=0, floating capsules
+  // sit above it showing the indigo background between and behind the glass.
+  //
+  // All other pages: pt-[76px] offsets content below the fixed capsule system.
+  // Height = pt-4 (16px) + h-12 center capsule (48px) + pb-3 (12px) = 76px.
+  const isHome = pathname === '/'
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <main className={isFullscreenChat ? '' : 'pb-16 md:pb-0'}>
+      <main className={[
+        isHome ? '' : 'pt-[76px]',
+        isFullscreenChat ? '' : 'pb-16 md:pb-0',
+      ].join(' ')}>
         <Outlet />
       </main>
       {!isFullscreenChat && <MobileBottomNav />}
