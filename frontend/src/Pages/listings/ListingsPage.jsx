@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ListingCard from '../../components/listings/ListingCard'
 import { getListings } from '../../features/listings/listings.service'
+import { addSearchAPI, getSearchesAPI, clearSearchesAPI } from '../../api/intelligence.api'
+import useAuthStore from '../../store/auth.Store'
 import { categories } from '../../mock/categories'
 
 const inputCls =
@@ -9,18 +11,20 @@ const inputCls =
 
 export default function ListingsPage() {
   const [searchParams] = useSearchParams()
+  const { isAuthenticated } = useAuthStore()
 
-  const [listings, setListings] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [showFilters, setShowFilters] = useState(false)
+  const [listings,       setListings]       = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [error,          setError]          = useState(null)
+  const [showFilters,    setShowFilters]    = useState(false)
+  const [recentSearches, setRecentSearches] = useState([])
 
-  const [search, setSearch] = useState(searchParams.get('q') || '')
+  const [search,         setSearch]         = useState(searchParams.get('q') || '')
   const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('q') || '')
-  const [category, setCategory] = useState(searchParams.get('cat') || 'all')
-  const [minPrice, setMinPrice] = useState('')
-  const [maxPrice, setMaxPrice] = useState('')
-  const [sortBy, setSortBy] = useState('latest')
+  const [category,       setCategory]       = useState(searchParams.get('cat') || 'all')
+  const [minPrice,       setMinPrice]       = useState('')
+  const [maxPrice,       setMaxPrice]       = useState('')
+  const [sortBy,         setSortBy]         = useState('latest')
 
   const hasActiveFilters = minPrice || maxPrice || sortBy !== 'latest'
   const hasAnyFilter = search || category !== 'all' || hasActiveFilters
@@ -34,6 +38,14 @@ export default function ListingsPage() {
     setSortBy('latest')
   }
 
+  // Load server-side recent searches for authenticated users
+  useEffect(() => {
+    if (!isAuthenticated) return
+    getSearchesAPI()
+      .then(({ searches }) => setRecentSearches(searches || []))
+      .catch(() => {})
+  }, [isAuthenticated])
+
   // Sync state when URL params change (e.g. navigation from category links)
   useEffect(() => {
     const q   = searchParams.get('q')   || ''
@@ -45,9 +57,19 @@ export default function ListingsPage() {
 
   // Debounce search — 400ms delay before triggering API call
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 400)
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      if (search.trim().length >= 2 && isAuthenticated) {
+        addSearchAPI(search.trim())
+        setRecentSearches((prev) => {
+          const q = search.trim().toLowerCase()
+          const deduped = [{ query: q, searchedAt: new Date() }, ...prev.filter((s) => s.query !== q)]
+          return deduped.slice(0, 10)
+        })
+      }
+    }, 400)
     return () => clearTimeout(timer)
-  }, [search])
+  }, [search, isAuthenticated])
 
   // Fetch with stale-request guard — prevents older response overwriting newer one
   useEffect(() => {
@@ -137,6 +159,31 @@ export default function ListingsPage() {
           </button>
         </div>
 
+        {/* Recent search pills — auth users who have searched before */}
+        {isAuthenticated && recentSearches.length > 0 && !search && (
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0">Recent:</span>
+            {recentSearches.slice(0, 6).map((s) => (
+              <button
+                key={s.query}
+                onClick={() => { setSearch(s.query); setDebouncedSearch(s.query) }}
+                className="flex items-center gap-1 text-xs text-gray-600 bg-white hover:bg-indigo-50 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 px-2.5 py-1 rounded-full transition-all duration-150 font-medium"
+              >
+                <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {s.query}
+              </button>
+            ))}
+            <button
+              onClick={() => { clearSearchesAPI(); setRecentSearches([]) }}
+              className="text-[10px] text-gray-400 hover:text-red-500 transition-colors font-medium ml-auto"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/* Expandable Filter Panel */}
         {showFilters && (
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-5 py-4 mb-2 flex flex-wrap gap-4 items-end">
@@ -181,6 +228,7 @@ export default function ListingsPage() {
                 <option value="latest">Latest First</option>
                 <option value="price_asc">Price: Low to High</option>
                 <option value="price_desc">Price: High to Low</option>
+                <option value="quality">Best Match (Trust + Freshness)</option>
               </select>
             </div>
 

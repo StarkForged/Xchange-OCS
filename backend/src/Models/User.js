@@ -89,11 +89,26 @@ const userSchema = new mongoose.Schema(
     },
 
     // ── Saved listings ─────────────────────────────────────────────────────
-    // $addToSet ensures no duplicates at the DB level.
     savedListings: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Listing',
+      },
+    ],
+
+    // ── Marketplace intelligence ────────────────────────────────────────────
+    // Last 10 listing views; newest first. Deduplicated before insert.
+    recentlyViewed: [
+      {
+        listing:  { type: mongoose.Schema.Types.ObjectId, ref: 'Listing' },
+        viewedAt: { type: Date, default: Date.now },
+      },
+    ],
+    // Last 10 search queries; newest first, case-normalised, deduplicated.
+    recentSearches: [
+      {
+        query:      { type: String, trim: true },
+        searchedAt: { type: Date, default: Date.now },
       },
     ],
   },

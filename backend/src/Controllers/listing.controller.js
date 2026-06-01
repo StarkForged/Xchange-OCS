@@ -1,7 +1,23 @@
 const streamifier = require('streamifier')
 const Listing    = require('../Models/Listing')
+const User       = require('../Models/User')
 const ApiError   = require('../Utils/ApiError')
 const cloudinary = require('../Config/cloudinary')
+
+// ── Trust-aware quality score (0–100) ─────────────────────────────────────────
+// Used for the "Best Match" sort and the recommended endpoint.
+
+function qualityScore(listing) {
+  const seller   = listing.seller ?? {}
+  const trust    = (seller.trustScore ?? 0) / 100
+  const rr       = (seller.sellerMetrics?.responseRate ?? 0) / 100
+  const noGhost  = (seller.ghostRisk?.flagged ?? false) ? 0 : 1
+
+  const ageDays  = (Date.now() - new Date(listing.createdAt)) / 86_400_000
+  const fresh    = ageDays < 1 ? 1.0 : ageDays < 7 ? 0.8 : ageDays < 30 ? 0.5 : ageDays < 90 ? 0.2 : 0.0
+
+  return trust * 40 + rr * 25 + fresh * 20 + noGhost * 15
+}
 
 // FormData sends every field as a string — safely parse JSON fields
 const parse = (val) => {
@@ -53,7 +69,19 @@ exports.getListings = async (req, res, next) => {
     if (sortBy === 'price_asc')  sort = { 'price.amount': 1 }
     if (sortBy === 'price_desc') sort = { 'price.amount': -1 }
 
-    const listings = await Listing.find(query).sort(sort).populate('seller', 'name trustScore badges ghostRisk').lean()
+    // Quality sort needs sellerMetrics to compute response rate
+    const sellerFields = sortBy === 'quality'
+      ? 'name trustScore badges ghostRisk sellerMetrics'
+      : 'name trustScore badges ghostRisk'
+
+    let listings = await Listing.find(query).sort(sort).populate('seller', sellerFields).lean()
+
+    if (sortBy === 'quality') {
+      listings = listings
+        .map((l) => ({ ...l, _qualityScore: qualityScore(l) }))
+        .sort((a, b) => b._qualityScore - a._qualityScore)
+        .map(({ _qualityScore, ...l }) => l)
+    }
 
     res.json({ listings })
   } catch (err) {
@@ -127,6 +155,139 @@ exports.createListing = async (req, res, next) => {
     })
 
     res.status(201).json({ listing })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// GET /api/listings/similar/:id ────────────────────────────────────────────────
+
+exports.getSimilarListings = async (req, res, next) => {
+  try {
+    const source = await Listing.findById(req.params.id).lean()
+    if (!source) return res.json({ listings: [] })
+
+    const price    = source.price?.amount ?? 0
+    const catId    = source.category?.id
+    const SELLER_FIELDS = 'name trustScore badges ghostRisk'
+
+    // Primary: same category + price within ±50%
+    const priceFilter = price > 0
+      ? { 'price.amount': { $gte: price * 0.5, $lte: price * 1.5 } }
+      : {}
+
+    let similar = await Listing.find({
+      _id:           { $ne: source._id },
+      'category.id': catId,
+      status:        'active',
+      ...priceFilter,
+    })
+      .sort({ createdAt: -1 })
+      .limit(4)
+      .populate('seller', SELLER_FIELDS)
+      .lean()
+
+    // Fill remaining slots with same-category listings (any price)
+    if (similar.length < 4) {
+      const exclude = [source._id, ...similar.map((l) => l._id)]
+      const extra   = await Listing.find({
+        _id:           { $nin: exclude },
+        'category.id': catId,
+        status:        'active',
+      })
+        .sort({ createdAt: -1 })
+        .limit(4 - similar.length)
+        .populate('seller', SELLER_FIELDS)
+        .lean()
+      similar.push(...extra)
+    }
+
+    res.json({ listings: similar })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// GET /api/listings/recommended  (requires auth) ──────────────────────────────
+
+exports.getRecommended = async (req, res, next) => {
+  try {
+    const SELLER_FIELDS = 'name trustScore badges ghostRisk sellerMetrics'
+
+    const user = await User.findById(req.user._id)
+      .select('recentlyViewed savedListings recentSearches')
+      .populate('recentlyViewed.listing', 'category')
+      .populate('savedListings', 'category')
+      .lean()
+
+    if (!user) return res.json({ listings: [] })
+
+    // Collect category signals (recently viewed + saved, most recent first)
+    const catIds = new Set()
+    ;(user.recentlyViewed ?? []).slice(0, 5).forEach((v) => {
+      if (v.listing?.category?.id) catIds.add(v.listing.category.id)
+    })
+    ;(user.savedListings ?? []).forEach((l) => {
+      if (l?.category?.id) catIds.add(l.category.id)
+    })
+
+    // IDs to exclude from results (already seen or saved)
+    const excludeIds = [
+      ...(user.recentlyViewed ?? []).map((v) => v.listing?._id).filter(Boolean),
+      ...(user.savedListings  ?? []).filter(Boolean),
+    ]
+
+    let pool = []
+
+    // Category-based candidates
+    if (catIds.size > 0) {
+      pool = await Listing.find({
+        _id:           { $nin: excludeIds },
+        'category.id': { $in: [...catIds] },
+        status:        'active',
+      })
+        .sort({ createdAt: -1 })
+        .limit(24)
+        .populate('seller', SELLER_FIELDS)
+        .lean()
+    }
+
+    // Search-term candidates (text match on title)
+    const searchTerms = (user.recentSearches ?? []).slice(0, 3).map((s) => s.query)
+    if (searchTerms.length > 0) {
+      const regex  = new RegExp(searchTerms.join('|'), 'i')
+      const termEx = [...excludeIds, ...pool.map((l) => l._id)]
+      const byTerm = await Listing.find({
+        _id:    { $nin: termEx },
+        title:  regex,
+        status: 'active',
+      })
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .populate('seller', SELLER_FIELDS)
+        .lean()
+      pool.push(...byTerm)
+    }
+
+    // Top-up with latest listings when pool is thin
+    if (pool.length < 8) {
+      const topEx = [...excludeIds, ...pool.map((l) => l._id)]
+      const topUp = await Listing.find({ _id: { $nin: topEx }, status: 'active' })
+        .sort({ createdAt: -1 })
+        .limit(8 - pool.length)
+        .populate('seller', SELLER_FIELDS)
+        .lean()
+      pool.push(...topUp)
+    }
+
+    // Sort by quality score and return top 8
+    const ranked = pool
+      .map((l)    => ({ ...l, _qs: qualityScore(l) }))
+      .sort((a, b) => b._qs - a._qs)
+      .slice(0, 8)
+      .map(({ _qs, ...l }) => l)
+
+    res.json({ listings: ranked })
   } catch (err) {
     next(err)
   }

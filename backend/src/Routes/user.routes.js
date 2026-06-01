@@ -7,6 +7,11 @@ const {
   getPublicProfile,
   toggleSavedListing,
   getSavedListings,
+  trackView,
+  getRecentlyViewed,
+  addSearch,
+  getSearches,
+  clearSearches,
 } = require('../Controllers/user.controller')
 const { protect } = require('../Middleware/auth.middleware')
 
@@ -17,8 +22,16 @@ router.put('/profile',           protect, updateProfile)
 router.get('/saved',             protect, getSavedListings)
 router.post('/saved/:listingId', protect, toggleSavedListing)
 
-// Public seller profile — used by listing detail page
-// Must be last to avoid shadowing /profile and /saved
-router.get('/:userId',                    getPublicProfile)
+// Recently viewed
+router.get('/viewed',             protect, getRecentlyViewed)
+router.post('/viewed/:listingId', protect, trackView)
+
+// Recent searches
+router.get('/searches',           protect, getSearches)
+router.post('/searches',          protect, addSearch)
+router.delete('/searches',        protect, clearSearches)
+
+// Public seller profile — must be LAST to avoid shadowing routes above
+router.get('/:userId', getPublicProfile)
 
 module.exports = router

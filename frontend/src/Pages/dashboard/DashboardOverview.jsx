@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getMyListingsAPI } from '../../api/listings.api'
 import { getChatsAPI } from '../../api/chat.api'
+import RecentlyViewed from '../../components/listings/RecentlyViewed'
+import RecommendedListings from '../../components/listings/RecommendedListings'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
 const timeAgo = (d) => {
@@ -359,6 +361,14 @@ export default function DashboardOverview() {
 
       {/* Reputation overview */}
       <ReputationSection user={user} />
+
+      {/* Recently viewed — horizontal scroll strip */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <RecentlyViewed maxItems={8} />
+      </div>
+
+      {/* Recommended listings */}
+      <RecommendedListings maxItems={4} label="Picks For You" />
 
       {/* Mid row: Quick actions + Profile completion */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

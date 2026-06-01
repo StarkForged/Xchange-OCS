@@ -6,8 +6,11 @@ import {
 } from 'lucide-react'
 import useAuthStore from '../../store/auth.Store'
 import { getListingsAPI } from '../../api/listings.api'
+import { addSearchAPI } from '../../api/intelligence.api'
 import { categories } from '../../mock/categories'
 import ListingCard from '../../components/listings/ListingCard'
+import RecentlyViewed from '../../components/listings/RecentlyViewed'
+import RecommendedListings from '../../components/listings/RecommendedListings'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -96,6 +99,7 @@ function HeroSearch() {
     if (!q) { navigate('/listings'); return }
     const next = saveRecent(q, recent)
     setRecent(next)
+    addSearchAPI(q)   // persist server-side (fire-and-forget)
     navigate(`/listings?q=${encodeURIComponent(q)}`)
     setQuery('')
   }, [query, recent, navigate])
@@ -418,6 +422,19 @@ export default function HomePage() {
           </span>
         </div>
       </div>
+
+      {/* ════════════════════════════════════════════
+          PERSONALIZED — auth users only
+      ════════════════════════════════════════════ */}
+      {isAuthenticated && (
+        <section className={`${CONTAINER} py-10 space-y-10`}>
+          {/* Recently viewed strip */}
+          <RecentlyViewed maxItems={6} compact />
+
+          {/* Recommended grid */}
+          <RecommendedListings maxItems={4} label="Recommended for You" />
+        </section>
+      )}
 
       {/* ════════════════════════════════════════════
           LATEST LISTINGS

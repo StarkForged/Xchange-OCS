@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getListingById } from '../../features/listings/listings.service'
 import SellerReputationCard from '../../components/trust/SellerReputationCard'
 import GhostSellerWarning from '../../components/trust/GhostSellerWarning'
+import SimilarListings from '../../components/listings/SimilarListings'
+import { trackViewAPI } from '../../api/intelligence.api'
+import useAuthStore from '../../store/auth.Store'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
@@ -45,6 +48,7 @@ function activityDot(lastActiveAt) {
 export default function ListingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuthStore()
 
   const [listing, setListing]     = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -69,6 +73,11 @@ export default function ListingDetailPage() {
     fetchListing()
     return () => { cancelled = true }
   }, [id])
+
+  // Track view for authenticated users (fire-and-forget)
+  useEffect(() => {
+    if (isAuthenticated && id) trackViewAPI(id)
+  }, [id, isAuthenticated])
 
   /* ── loading ── */
   if (loading) {
@@ -448,6 +457,11 @@ export default function ListingDetailPage() {
           {/* Full Seller Reputation Card */}
           <div className="fsu-5">
             <SellerReputationCard seller={sellerObj} />
+          </div>
+
+          {/* Similar Listings */}
+          <div className="fsu-5">
+            <SimilarListings listingId={id} />
           </div>
         </div>
 

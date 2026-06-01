@@ -222,6 +222,117 @@ exports.toggleSavedListing = async (req, res, next) => {
   }
 }
 
+// ── POST /api/users/viewed/:listingId ─────────────────────────────────────────
+
+exports.trackView = async (req, res, next) => {
+  try {
+    const { listingId } = req.params
+    if (!mongoose.Types.ObjectId.isValid(listingId)) return res.json({ ok: true })
+
+    // Pull any existing entry for this listing, then prepend a fresh one (dedup)
+    await User.updateOne(
+      { _id: req.user._id },
+      { $pull: { recentlyViewed: { listing: listingId } } }
+    )
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $push: {
+          recentlyViewed: {
+            $each:     [{ listing: listingId, viewedAt: new Date() }],
+            $position: 0,
+            $slice:    10,
+          },
+        },
+      }
+    )
+
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /api/users/viewed ─────────────────────────────────────────────────────
+
+exports.getRecentlyViewed = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .select('recentlyViewed')
+      .populate({
+        path:    'recentlyViewed.listing',
+        select:  'title price images category location status seller createdAt viewsCount',
+        populate: { path: 'seller', select: 'name trustScore badges ghostRisk' },
+      })
+      .lean()
+
+    if (!user) return res.json({ listings: [] })
+
+    const listings = user.recentlyViewed
+      .filter((v) => v.listing && v.listing.status !== 'inactive')
+      .map((v) => ({ ...v.listing, viewedAt: v.viewedAt }))
+
+    res.json({ listings })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── POST /api/users/searches ──────────────────────────────────────────────────
+
+exports.addSearch = async (req, res, next) => {
+  try {
+    const raw = req.body?.query?.trim()
+    if (!raw || raw.length < 2) return res.json({ ok: true })
+
+    const query = raw.toLowerCase()
+
+    // Remove existing duplicate first, then prepend (atomic two-op approach)
+    await User.updateOne(
+      { _id: req.user._id },
+      { $pull: { recentSearches: { query } } }
+    )
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $push: {
+          recentSearches: {
+            $each:     [{ query, searchedAt: new Date() }],
+            $position: 0,
+            $slice:    10,
+          },
+        },
+      }
+    )
+
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /api/users/searches ───────────────────────────────────────────────────
+
+exports.getSearches = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select('recentSearches').lean()
+    res.json({ searches: user?.recentSearches ?? [] })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── DELETE /api/users/searches ────────────────────────────────────────────────
+
+exports.clearSearches = async (req, res, next) => {
+  try {
+    await User.updateOne({ _id: req.user._id }, { $set: { recentSearches: [] } })
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ── GET /api/users/saved ─────────────────────────────────────────────────────
 
 exports.getSavedListings = async (req, res, next) => {
