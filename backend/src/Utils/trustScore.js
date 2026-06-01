@@ -1,64 +1,111 @@
 /**
  * Trust score computation (0–100).
  *
- * Profile completeness is the primary driver — weights intentionally match the
- * point labels displayed in ProfilePage.TrustChecklist. Do NOT change weights
- * without updating the UI labels at the same time.
+ * Four pillars — each separately capped so no single axis can dominate:
  *
- * Response reputation adds bonus points on top (capped at 100 overall), so a
- * seller with a partially-complete profile can still reach 100 through consistent
- * responsiveness, and a fully-complete profile always stays at 100.
+ *   Identity     (35 max)  — verified profile fields
+ *   Activity     (25 max)  — listing + messaging engagement
+ *   Reputation   (20 max)  — response rate & speed
+ *   Account Age  (20 max)  — time-gated trust; cannot be rushed
+ *
+ * Design intent: a brand-new user filling every profile field still cannot
+ * exceed ~65 pts until they have real activity and tenure. Reaching 90+ pts
+ * requires all four pillars to be mature.
  */
 
-const PROFILE_WEIGHTS = {
-  name:         10,
-  email:        10,
-  phone:        20,
-  bio:          15,
-  location:     10,
-  profileImage: 15,
-  hasListings:  10,
-  accountAge:   10,
+// ── Account age tier (absolute, not cumulative) ───────────────────────────────
+
+function ageScoreTier(createdAt) {
+  const days = Math.floor((Date.now() - new Date(createdAt)) / 86_400_000)
+  if (days >= 180) return { score: 20, days }
+  if (days >=  90) return { score: 15, days }
+  if (days >=  30) return { score: 10, days }
+  if (days >=   7) return { score:  5, days }
+  return               { score:  0, days }
 }
 
 /**
  * @param {object} user          — Mongoose user doc or plain object
- * @param {number} listingCount  — total listing count for this user
- * @param {object} [metrics]     — sellerMetrics { responseRate, avgResponseTimeMs }
+ * @param {number} listingCount  — total listings posted by this user
+ * @param {object} [metrics]     — sellerMetrics from computeResponseMetrics
+ *   { totalInquiries, respondedInquiries, responseRate, avgResponseTimeMs, lastActiveAt }
  * @returns {{ score: number, breakdown: object }}
  */
 function computeTrustScore(user, listingCount, metrics = {}) {
-  const ageDays = Math.floor((Date.now() - new Date(user.createdAt)) / 86400000)
+  const { score: ageScore, days: ageDays } = ageScoreTier(user.createdAt)
 
+  const rate       = metrics?.responseRate       ?? 0
+  const ms         = metrics?.avgResponseTimeMs  ?? null
+  const responded  = metrics?.respondedInquiries ?? 0
+
+  const msSinceActive = metrics?.lastActiveAt
+    ? Date.now() - new Date(metrics.lastActiveAt)
+    : null
+  const activeRecently = msSinceActive !== null && msSinceActive < 7 * 86_400_000
+
+  // ── Identity (35 max) ─────────────────────────────────────────────────────
+  const email        = !!user.email?.trim()
+  const phone        = !!user.phone?.trim()
+  const profileImage = !!(user.profileImage?.trim())
+  const location     = !!user.location?.trim()
+  const bio          = !!user.bio?.trim()
+
+  const identityScore =
+    (email        ? 10 : 0) +
+    (phone        ? 10 : 0) +
+    (profileImage ?  5 : 0) +
+    (location     ?  5 : 0) +
+    (bio          ?  5 : 0)
+
+  // ── Activity (25 max) ─────────────────────────────────────────────────────
+  const firstListing   = listingCount >= 1
+  const threeListings  = listingCount >= 3
+  const fiveListings   = listingCount >= 5
+  const hasMessaging   = responded   >= 1    // has replied to at least one buyer
+
+  const activityScore =
+    (firstListing   ? 5 : 0) +
+    (threeListings  ? 5 : 0) +
+    (fiveListings   ? 5 : 0) +
+    (activeRecently ? 5 : 0) +
+    (hasMessaging   ? 5 : 0)
+
+  // ── Reputation (20 max) ───────────────────────────────────────────────────
+  // Rate tiers are mutually exclusive — take the higher one only.
+  const responseRate90 = rate >= 90
+  const responseRate70 = !responseRate90 && rate >= 70
+  const fastResponder  = ms !== null && ms < 2 * 3_600_000   // avg reply < 2 h
+
+  const reputationScore =
+    (responseRate90 ? 10 : responseRate70 ? 5 : 0) +
+    (fastResponder  ? 10 : 0)
+
+  const score = Math.min(identityScore + activityScore + reputationScore + ageScore, 100)
+
+  // Breakdown is a flat boolean/numeric map consumed by the frontend TrustChecklist.
   const breakdown = {
-    name:         !!user.name?.trim(),
-    email:        !!user.email?.trim(),
-    phone:        !!user.phone?.trim(),
-    bio:          !!user.bio?.trim(),
-    location:     !!user.location?.trim(),
-    profileImage: !!(user.profileImage?.trim()),
-    hasListings:  listingCount > 0,
-    accountAge:   ageDays >= 30,
+    // Identity
+    email,
+    phone,
+    profileImage,
+    location,
+    bio,
+    // Activity
+    firstListing,
+    threeListings,
+    fiveListings,
+    activeRecently,
+    hasMessaging,
+    // Reputation
+    responseRate90,
+    responseRate70,
+    fastResponder,
+    // Age (expose both raw and score for display)
+    accountAgeDays:  ageDays,
+    accountAgeScore: ageScore,
   }
 
-  const profileScore = Object.entries(breakdown)
-    .filter(([, done]) => done)
-    .reduce((sum, [key]) => sum + PROFILE_WEIGHTS[key], 0)
-
-  // Response bonus — adds up to 25 pts, does not affect breakdown keys
-  const rate         = metrics?.responseRate    ?? 0
-  const ms           = metrics?.avgResponseTimeMs ?? null
-  let   responseBonus = 0
-  if (rate >= 25)                          responseBonus += 5
-  if (rate >= 50)                          responseBonus += 5
-  if (rate >= 75)                          responseBonus += 5
-  if (ms !== null && ms < 4 * 3_600_000)  responseBonus += 5   // < 4 h
-  if (ms !== null && ms <     3_600_000)  responseBonus += 5   // < 1 h
-
-  return {
-    score:     Math.min(profileScore + responseBonus, 100),
-    breakdown,
-  }
+  return { score, breakdown }
 }
 
-module.exports = { computeTrustScore, PROFILE_WEIGHTS }
+module.exports = { computeTrustScore }

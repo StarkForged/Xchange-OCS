@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getListingById } from '../../features/listings/listings.service'
+import SellerReputationCard from '../../components/trust/SellerReputationCard'
+import GhostSellerWarning from '../../components/trust/GhostSellerWarning'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
@@ -23,6 +25,22 @@ const formatSellerName = (seller) => {
 
 const formatAttributeKey = (key) =>
   key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())
+
+function trustTierColor(score) {
+  if (score >= 90) return { bar: 'bg-yellow-400', text: 'text-yellow-800' }
+  if (score >= 80) return { bar: 'bg-amber-400',  text: 'text-amber-700'  }
+  if (score >= 50) return { bar: 'bg-emerald-400', text: 'text-emerald-700' }
+  if (score >  0)  return { bar: 'bg-sky-400',    text: 'text-sky-700'    }
+  return                  { bar: 'bg-gray-300',   text: 'text-gray-400'   }
+}
+
+function activityDot(lastActiveAt) {
+  if (!lastActiveAt) return 'bg-gray-300'
+  const hours = (Date.now() - new Date(lastActiveAt)) / 3_600_000
+  if (hours < 24)  return 'bg-emerald-400'
+  if (hours < 168) return 'bg-amber-400'
+  return 'bg-gray-300'
+}
 
 export default function ListingDetailPage() {
   const { id } = useParams()
@@ -98,6 +116,11 @@ export default function ListingDetailPage() {
   const saves          = favoritesCount ?? 0
   const views          = viewsCount ?? 0
 
+  const sellerObj      = typeof seller === 'object' ? seller : null
+  const trustColor     = trustTierColor(sellerObj?.trustScore ?? 0)
+  const dotColor       = activityDot(sellerObj?.sellerMetrics?.lastActiveAt)
+  const isGhost        = sellerObj?.ghostRisk?.flagged
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-gray-50 to-gray-100">
       <style>{`
@@ -110,6 +133,7 @@ export default function ListingDetailPage() {
         .fsu-2 { animation: fsu 0.5s 0.14s cubic-bezier(0.22,1,0.36,1) both; }
         .fsu-3 { animation: fsu 0.5s 0.21s cubic-bezier(0.22,1,0.36,1) both; }
         .fsu-4 { animation: fsu 0.5s 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+        .fsu-5 { animation: fsu 0.5s 0.35s cubic-bezier(0.22,1,0.36,1) both; }
       `}</style>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
@@ -124,6 +148,13 @@ export default function ListingDetailPage() {
           </svg>
           Back to Listings
         </button>
+
+        {/* ── Ghost seller page-level warning ── */}
+        {isGhost && (
+          <div className="fsu mb-6">
+            <GhostSellerWarning />
+          </div>
+        )}
 
         {/* ── TOP GRID: image | sticky info panel ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 items-start">
@@ -164,7 +195,7 @@ export default function ListingDetailPage() {
                 </span>
               )}
 
-              {/* View count — bottom left (on gradient) */}
+              {/* View count — bottom left */}
               <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 text-white/90 text-xs font-medium">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -235,7 +266,7 @@ export default function ListingDetailPage() {
               </div>
             )}
 
-            {/* Engagement trigger — social proof */}
+            {/* Social proof */}
             {saves > 0 && !isSold && (
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3.5 py-2.5 rounded-xl">
                 <span className="text-base">🔥</span>
@@ -292,32 +323,27 @@ export default function ListingDetailPage() {
               <div className="flex items-center gap-3">
                 <div className="relative flex-shrink-0">
                   <img
-                    src={typeof seller === 'object' && seller?.profileImage ? seller.profileImage : defaultAvatar}
+                    src={sellerObj?.profileImage || defaultAvatar}
                     alt="Seller"
                     className="w-11 h-11 rounded-full object-cover border-2 border-indigo-100 shadow-sm"
                   />
-                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full" />
+                  <span className={`absolute bottom-0 right-0 w-3 h-3 ${dotColor} border-2 border-white rounded-full`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-800 leading-tight truncate">
                     {formatSellerName(seller)}
                   </p>
                   {/* Trust score mini bar */}
-                  {typeof seller === 'object' && seller?.trustScore != null && (
+                  {sellerObj?.trustScore != null && (
                     <div className="flex items-center gap-2 mt-1">
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            seller.trustScore >= 80 ? 'bg-amber-400'
-                            : seller.trustScore >= 50 ? 'bg-emerald-400'
-                            : seller.trustScore > 0  ? 'bg-sky-400'
-                            : 'bg-gray-300'
-                          }`}
-                          style={{ width: `${seller.trustScore}%` }}
+                          className={`h-full rounded-full transition-all duration-500 ${trustColor.bar}`}
+                          style={{ width: `${sellerObj.trustScore}%` }}
                         />
                       </div>
-                      <span className="text-[10px] font-bold text-gray-500 flex-shrink-0">
-                        {seller.trustScore}/100
+                      <span className={`text-[10px] font-bold flex-shrink-0 ${trustColor.text}`}>
+                        {sellerObj.trustScore}/100
                       </span>
                     </div>
                   )}
@@ -325,15 +351,20 @@ export default function ListingDetailPage() {
                 <div className="text-right flex-shrink-0">
                   <p className="text-[10px] text-gray-400 mb-0.5">Joined</p>
                   <p className="text-xs font-semibold text-gray-600">
-                    {timeAgo(typeof seller === 'object' ? seller?.createdAt : createdAt)}
+                    {timeAgo(sellerObj?.createdAt || createdAt)}
                   </p>
                 </div>
               </div>
 
+              {/* Ghost compact warning */}
+              {isGhost && (
+                <GhostSellerWarning compact />
+              )}
+
               {/* Seller badges (max 3) */}
-              {typeof seller === 'object' && seller?.badges?.length > 0 && (
+              {sellerObj?.badges?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
-                  {seller.badges.slice(0, 3).map((b) => (
+                  {sellerObj.badges.slice(0, 3).map((b) => (
                     <span
                       key={b.id}
                       title={b.description}
@@ -342,20 +373,40 @@ export default function ListingDetailPage() {
                       {b.label}
                     </span>
                   ))}
+                  {sellerObj.badges.length > 3 && (
+                    <span className="text-[10px] text-gray-400 font-medium self-center">
+                      +{sellerObj.badges.length - 3} more
+                    </span>
+                  )}
                 </div>
               )}
 
-              {/* Fallback if no badges yet */}
-              {(typeof seller !== 'object' || !seller?.badges?.length) && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                  ✓ Verified Seller
-                </span>
+              {/* Trust signals row */}
+              {sellerObj && (
+                <div className="flex flex-wrap gap-1.5">
+                  {sellerObj.sellerMetrics?.responseRate != null && (
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      sellerObj.sellerMetrics.responseRate >= 80
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : sellerObj.sellerMetrics.responseRate >= 50
+                        ? 'bg-amber-50 border-amber-200 text-amber-700'
+                        : 'bg-rose-50 border-rose-200 text-rose-700'
+                    }`}>
+                      {sellerObj.sellerMetrics.responseRate}% response
+                    </span>
+                  )}
+                  {!sellerObj?.badges?.length && !isGhost && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                      ✓ Verified Seller
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* ── BOTTOM: Description + Attributes ── */}
+        {/* ── BOTTOM: Description + Attributes + Seller Reputation ── */}
         <div className="space-y-5">
 
           {/* Description */}
@@ -393,6 +444,11 @@ export default function ListingDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Full Seller Reputation Card */}
+          <div className="fsu-5">
+            <SellerReputationCard seller={sellerObj} />
+          </div>
         </div>
 
       </div>

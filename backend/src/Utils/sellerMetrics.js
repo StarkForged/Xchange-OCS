@@ -66,6 +66,17 @@ const BADGE_DEFS = [
     check: (u) => u.trustScore >= 80,
   },
   {
+    id:          'top_seller',
+    label:       'Top Seller',
+    description: 'Trust score 90+, 90%+ response rate, 5+ listings, 90+ days old',
+    icon:        'top_seller',
+    check: (u, m, lc, ageDays) =>
+      u.trustScore >= 90 &&
+      ageDays >= 90 &&
+      m.responseRate >= 90 &&
+      lc >= 5,
+  },
+  {
     id:          'veteran_seller',
     label:       'Veteran Seller',
     description: 'Member for 1 year or more',

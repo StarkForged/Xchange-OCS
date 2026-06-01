@@ -53,7 +53,7 @@ exports.getListings = async (req, res, next) => {
     if (sortBy === 'price_asc')  sort = { 'price.amount': 1 }
     if (sortBy === 'price_desc') sort = { 'price.amount': -1 }
 
-    const listings = await Listing.find(query).sort(sort).populate('seller', 'name').lean()
+    const listings = await Listing.find(query).sort(sort).populate('seller', 'name trustScore badges ghostRisk').lean()
 
     res.json({ listings })
   } catch (err) {
@@ -65,7 +65,7 @@ exports.getListings = async (req, res, next) => {
 exports.getListingById = async (req, res, next) => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('seller', 'name profileImage createdAt trustScore profileCompletion badges sellerMetrics')
+      .populate('seller', 'name profileImage createdAt trustScore profileCompletion badges sellerMetrics ghostRisk')
       .lean()
     if (!listing) throw new ApiError(404, 'Listing not found')
 

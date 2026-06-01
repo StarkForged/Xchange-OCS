@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getMyListingsAPI } from '../../api/listings.api'
 import { getChatsAPI } from '../../api/chat.api'
-import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
 
 const timeAgo = (d) => {
@@ -38,7 +37,6 @@ function StatCard({ label, value, sub, icon, from, to, loading }) {
           {icon}
         </div>
       </div>
-      {/* decorative ring */}
       <div className="absolute -bottom-6 -right-6 w-28 h-28 rounded-full bg-white/10 pointer-events-none" />
       <div className="absolute -bottom-10 -right-2 w-16 h-16 rounded-full bg-white/5 pointer-events-none" />
     </div>
@@ -73,16 +71,21 @@ function QuickActionCard({ to, label, description, icon, accent }) {
 // ── Profile completion ─────────────────────────────────────────────────────
 
 function ProfileCompletion({ user }) {
+  const pct = user?.profileCompletion ?? 0
+
   const checks = [
     { label: 'Name added',         done: !!user?.name },
     { label: 'Email verified',     done: !!user?.email },
-    { label: 'Profile photo',      done: !!(user?.profileImage && !user.profileImage.includes('default-avatar.png')) },
-    { label: 'Trust score earned', done: (user?.trustScore ?? 0) > 0 },
-    { label: 'First listing',      done: false },
+    { label: 'Profile photo',      done: !!(user?.profileImage && !user.profileImage.includes('default')) },
+    { label: 'Phone number',       done: !!user?.phone },
+    { label: 'Bio / About',        done: !!user?.bio },
+    { label: 'Location set',       done: !!user?.location },
+    { label: 'First listing',      done: (user?.trustScore ?? 0) > 30 },
   ]
-  const pct   = Math.round((checks.filter(c => c.done).length / checks.length) * 100)
-  const color = pct < 40 ? 'bg-rose-500' : pct < 70 ? 'bg-amber-500' : 'bg-emerald-500'
-  const label = pct < 40 ? 'text-rose-600' : pct < 70 ? 'text-amber-600' : 'text-emerald-600'
+
+  const computed = pct || Math.round((checks.filter((c) => c.done).length / checks.length) * 100)
+  const color    = computed < 40 ? 'bg-rose-500' : computed < 70 ? 'bg-amber-500' : 'bg-emerald-500'
+  const label    = computed < 40 ? 'text-rose-600' : computed < 70 ? 'text-amber-600' : 'text-emerald-600'
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 h-full">
@@ -91,20 +94,18 @@ function ProfileCompletion({ user }) {
           <h3 className="text-sm font-bold text-gray-900">Profile Strength</h3>
           <p className="text-xs text-gray-400 mt-0.5">Complete your profile to build trust</p>
         </div>
-        <span className={`text-2xl font-black ${label}`}>{pct}%</span>
+        <span className={`text-2xl font-black ${label}`}>{computed}%</span>
       </div>
 
-      {/* Progress bar */}
       <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
         <div
           className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${pct}%` }}
+          style={{ width: `${computed}%` }}
         />
       </div>
 
-      {/* Checklist */}
       <div className="space-y-2.5">
-        {checks.map(c => (
+        {checks.map((c) => (
           <div key={c.label} className="flex items-center gap-2.5">
             <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${c.done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
               {c.done
@@ -119,13 +120,132 @@ function ProfileCompletion({ user }) {
         ))}
       </div>
 
-      {pct < 100 && (
+      {computed < 100 && (
         <Link
           to="/dashboard/profile"
           className="mt-4 flex items-center justify-center h-9 w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition-colors duration-150"
         >
           Complete Profile →
         </Link>
+      )}
+    </div>
+  )
+}
+
+// ── Reputation overview section ────────────────────────────────────────────
+
+function ReputationSection({ user }) {
+  const score   = user?.trustScore ?? 0
+  const badges  = user?.badges ?? []
+  const metrics = user?.sellerMetrics
+  const isGhost = user?.ghostRisk?.flagged
+
+  const tier =
+    score >= 90 ? { label: 'Top Seller', color: 'text-yellow-800', bg: 'from-yellow-400 to-amber-500' }
+    : score >= 80 ? { label: 'Trusted',   color: 'text-amber-700',  bg: 'from-amber-500 to-orange-500' }
+    : score >= 50 ? { label: 'Building',  color: 'text-emerald-700', bg: 'from-emerald-500 to-teal-500' }
+    : score > 0   ? { label: 'New',       color: 'text-sky-700',    bg: 'from-sky-500 to-blue-500'     }
+    :               { label: 'New Member', color: 'text-gray-500',   bg: 'from-gray-400 to-gray-500'    }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold text-gray-900">Reputation Overview</h2>
+        <Link to="/dashboard/profile" className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors flex items-center gap-1">
+          View details
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      </div>
+
+      {/* Ghost risk alert */}
+      {isGhost && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">Ghost Seller Risk</p>
+            <p className="text-xs text-amber-700 mt-0.5">Your listings may show an "inactive seller" warning to buyers.</p>
+          </div>
+          <Link to="/dashboard/messages" className="flex-shrink-0 text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors">
+            Reply now
+          </Link>
+        </div>
+      )}
+
+      {/* Reputation cards row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+        {/* Trust score tile */}
+        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${tier.bg} p-4 text-white col-span-2 sm:col-span-1`}>
+          <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-1">Trust Score</p>
+          <p className="text-3xl font-black leading-none">{score}</p>
+          <p className="text-xs text-white/70 mt-1">{tier.label}</p>
+          <div className="absolute -bottom-4 -right-4 w-16 h-16 rounded-full bg-white/10 pointer-events-none" />
+        </div>
+
+        {/* Badges tile */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Badges</p>
+          <p className="text-3xl font-black text-gray-900 leading-none">{badges.length}</p>
+          <p className="text-xs text-gray-400 mt-1">earned</p>
+        </div>
+
+        {/* Response rate tile */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Response</p>
+          {metrics?.totalInquiries ? (
+            <>
+              <p className={`text-3xl font-black leading-none ${
+                metrics.responseRate >= 80 ? 'text-emerald-600'
+                : metrics.responseRate >= 50 ? 'text-amber-600'
+                : 'text-rose-600'
+              }`}>
+                {metrics.responseRate}%
+              </p>
+              <p className="text-xs text-gray-400 mt-1">rate</p>
+            </>
+          ) : (
+            <>
+              <p className="text-3xl font-black text-gray-300 leading-none">—</p>
+              <p className="text-xs text-gray-400 mt-1">no data yet</p>
+            </>
+          )}
+        </div>
+
+        {/* Inquiries tile */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Inquiries</p>
+          <p className="text-3xl font-black text-gray-900 leading-none">
+            {metrics?.totalInquiries ?? 0}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">received</p>
+        </div>
+      </div>
+
+      {/* Badge strip */}
+      {badges.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {badges.slice(0, 5).map((b) => (
+            <span
+              key={b.id}
+              title={b.description}
+              className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600"
+            >
+              {b.label}
+            </span>
+          ))}
+          {badges.length > 5 && (
+            <Link
+              to="/dashboard/profile"
+              className="text-[10px] font-bold text-gray-400 hover:text-indigo-600 self-center transition-colors"
+            >
+              +{badges.length - 5} more
+            </Link>
+          )}
+        </div>
       )}
     </div>
   )
@@ -159,7 +279,7 @@ export default function DashboardOverview() {
   }, [])
 
   const totalListings  = listings.length
-  const activeListings = listings.filter(l => l.status === 'active').length
+  const activeListings = listings.filter((l) => l.status === 'active').length
   const totalChats     = chats.length
   const recentListings = listings.slice(0, 3)
 
@@ -237,6 +357,9 @@ export default function DashboardOverview() {
         />
       </div>
 
+      {/* Reputation overview */}
+      <ReputationSection user={user} />
+
       {/* Mid row: Quick actions + Profile completion */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -298,7 +421,7 @@ export default function DashboardOverview() {
 
         {loading && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => (
+            {[1, 2, 3].map((i) => (
               <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
                 <div className="aspect-[4/3] bg-gray-100 rounded-xl mb-3" />
                 <div className="h-3 bg-gray-100 rounded w-3/4 mb-2" />
@@ -324,7 +447,7 @@ export default function DashboardOverview() {
 
         {!loading && recentListings.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {recentListings.map(listing => (
+            {recentListings.map((listing) => (
               <Link
                 key={listing._id}
                 to={`/listings/${listing._id}`}

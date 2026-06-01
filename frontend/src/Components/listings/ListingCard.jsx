@@ -54,8 +54,18 @@ export default function ListingCard({ listing }) {
   const imgAreaRef     = useRef(null)   // ref to image area div, used for fly animation
 
   const isSold     = status === 'sold'
-  const sellerName = typeof seller === 'object' ? (seller?.name || 'Seller') : 'Seller'
-  const isVerified = typeof seller === 'object' && !!seller?.name
+  const sellerObj  = typeof seller === 'object' ? seller : null
+  const sellerName = sellerObj?.name || 'Seller'
+  const isVerified = !!sellerObj?.name
+  const trustScore = sellerObj?.trustScore ?? null
+  const topBadge   = sellerObj?.badges?.[0] ?? null
+  const isGhost    = sellerObj?.ghostRisk?.flagged
+
+  const trustTierBadge = trustScore == null ? null
+    : trustScore >= 90 ? { label: 'Top Seller', cls: 'bg-yellow-50 text-yellow-800 border-yellow-300' }
+    : trustScore >= 80 ? { label: 'Trusted',    cls: 'bg-amber-50 text-amber-700 border-amber-200'   }
+    : trustScore >= 50 ? { label: 'Building',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+    : null
 
   const goNext = useCallback((e) => {
     e?.preventDefault(); e?.stopPropagation()
@@ -272,24 +282,47 @@ export default function ListingCard({ listing }) {
         )}
 
         {/* Footer */}
-        <div className="mt-auto pt-2 border-t border-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {/* Seller */}
-            <span className="text-xs text-gray-600 font-medium truncate max-w-[80px]">{sellerName}</span>
-            {isVerified && (
-              <svg className="w-3 h-3 text-emerald-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            )}
+        <div className="mt-auto pt-2 border-t border-gray-50 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {/* Seller */}
+              <span className="text-xs text-gray-600 font-medium truncate max-w-[80px]">{sellerName}</span>
+              {isVerified && (
+                <svg className="w-3 h-3 text-emerald-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-shrink-0">
+              <span className="flex items-center gap-0.5">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                {fmtViews(viewsCount)}
+              </span>
+              <span>{timeAgo(createdAt)}</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-shrink-0">
-            <span className="flex items-center gap-0.5">
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-              {fmtViews(viewsCount)}
-            </span>
-            <span>{timeAgo(createdAt)}</span>
-          </div>
+          {/* Trust signals row */}
+          {(trustTierBadge || topBadge || isGhost) && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {trustTierBadge && (
+                <span className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${trustTierBadge.cls}`}>
+                  {trustTierBadge.label}
+                </span>
+              )}
+              {topBadge && !trustTierBadge && (
+                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600">
+                  {topBadge.label}
+                </span>
+              )}
+              {isGhost && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">
+                  ⚠ Less active
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Link>

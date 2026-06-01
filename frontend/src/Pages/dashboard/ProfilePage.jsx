@@ -16,14 +16,19 @@ const timeAgo = (d) => {
 
 const formatResponseTime = (ms) => {
   if (ms == null) return '—'
-  if (ms < 3_600_000)    return `${Math.round(ms / 60_000)} min`
-  if (ms < 86_400_000)   return `${Math.round(ms / 3_600_000)} hr`
+  if (ms < 3_600_000)  return `${Math.round(ms / 60_000)} min`
+  if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)} hr`
   return `${Math.round(ms / 86_400_000)} day${Math.round(ms / 86_400_000) !== 1 ? 's' : ''}`
 }
 
-// ── Badge icon map ─────────────────────────────────────────────────────────────
+// ── Badge icon map ────────────────────────────────────────────────────────────
 
 const BADGE_ICONS = {
+  top_seller: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l3 9H2l3 6h14l3-6h-6l3-9H5z" />
+    </svg>
+  ),
   new_seller: (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -62,6 +67,7 @@ const BADGE_ICONS = {
 }
 
 const BADGE_COLORS = {
+  top_seller:        'bg-yellow-50  border-yellow-300  text-yellow-800',
   new_seller:        'bg-sky-50     border-sky-200     text-sky-700',
   verified_seller:   'bg-indigo-50  border-indigo-200  text-indigo-700',
   active_seller:     'bg-violet-50  border-violet-200  text-violet-700',
@@ -75,10 +81,11 @@ const BADGE_COLORS = {
 
 function TrustBar({ score }) {
   const pct   = Math.min(Math.max(score ?? 0, 0), 100)
-  const level = pct >= 80 ? { label: 'Top Seller',  color: 'from-amber-400 to-orange-500',  text: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200' }
-    : pct >= 50           ? { label: 'Trusted',      color: 'from-emerald-400 to-teal-500',  text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' }
-    : pct > 0             ? { label: 'Building',     color: 'from-sky-400 to-blue-500',       text: 'text-sky-700',   bg: 'bg-sky-50',    border: 'border-sky-200' }
-    :                       { label: 'New Member',   color: 'from-gray-300 to-gray-400',      text: 'text-gray-500',  bg: 'bg-gray-50',   border: 'border-gray-200' }
+  const level = pct >= 90 ? { label: 'Top Seller', color: 'from-yellow-400 to-amber-500', text: 'text-yellow-800', bg: 'bg-yellow-50', border: 'border-yellow-300' }
+    : pct >= 80           ? { label: 'Trusted',    color: 'from-amber-400 to-orange-500',  text: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200' }
+    : pct >= 50           ? { label: 'Building',   color: 'from-emerald-400 to-teal-500',  text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' }
+    : pct > 0             ? { label: 'New',        color: 'from-sky-400 to-blue-500',      text: 'text-sky-700',    bg: 'bg-sky-50',    border: 'border-sky-200' }
+    :                       { label: 'New Member', color: 'from-gray-300 to-gray-400',     text: 'text-gray-500',   bg: 'bg-gray-50',   border: 'border-gray-200' }
 
   return (
     <div className="space-y-2">
@@ -96,37 +103,242 @@ function TrustBar({ score }) {
   )
 }
 
+function CheckRow({ done, label, pts }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2.5">
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+          {done
+            ? <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+            : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+          }
+        </div>
+        <span className={`text-xs font-medium ${done ? 'text-gray-700' : 'text-gray-400'}`}>{label}</span>
+      </div>
+      <span className={`text-[10px] font-bold ${done ? 'text-emerald-600' : 'text-gray-300'}`}>{pts}</span>
+    </div>
+  )
+}
+
 function TrustChecklist({ breakdown }) {
-  const items = [
-    { key: 'name',         label: 'Name added',            pts: 10 },
-    { key: 'email',        label: 'Email verified',         pts: 10 },
-    { key: 'phone',        label: 'Phone number added',     pts: 20 },
-    { key: 'bio',          label: 'Bio/About completed',    pts: 15 },
-    { key: 'location',     label: 'Location set',           pts: 10 },
-    { key: 'profileImage', label: 'Profile photo uploaded', pts: 15 },
-    { key: 'hasListings',  label: 'First listing posted',   pts: 10 },
-    { key: 'accountAge',   label: 'Account 30+ days old',   pts: 10 },
+  if (!breakdown) return null
+
+  const ageDays  = breakdown.accountAgeDays  ?? 0
+  const ageScore = breakdown.accountAgeScore ?? 0
+  const ageLabel =
+    ageDays >= 180 ? '180+ days (+20)'
+    : ageDays >= 90 ? '90+ days (+15)'
+    : ageDays >= 30 ? '30+ days (+10)'
+    : ageDays >=  7 ? '7+ days (+5)'
+    : 'Under 7 days (+0)'
+
+  return (
+    <div className="space-y-4">
+
+      {/* Identity — 35 max */}
+      <div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+          <span>Identity</span>
+          <span className="text-gray-300">35 max</span>
+        </p>
+        <div className="space-y-1.5">
+          <CheckRow done={breakdown.email}        label="Email verified"         pts="+10" />
+          <CheckRow done={breakdown.phone}        label="Phone number added"     pts="+10" />
+          <CheckRow done={breakdown.profileImage} label="Profile photo uploaded" pts="+5"  />
+          <CheckRow done={breakdown.location}     label="Location set"           pts="+5"  />
+          <CheckRow done={breakdown.bio}          label="Bio/About completed"    pts="+5"  />
+        </div>
+      </div>
+
+      {/* Activity — 25 max */}
+      <div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+          <span>Activity</span>
+          <span className="text-gray-300">25 max</span>
+        </p>
+        <div className="space-y-1.5">
+          <CheckRow done={breakdown.firstListing}   label="First listing posted"   pts="+5" />
+          <CheckRow done={breakdown.threeListings}  label="3+ listings posted"     pts="+5" />
+          <CheckRow done={breakdown.fiveListings}   label="5+ listings posted"     pts="+5" />
+          <CheckRow done={breakdown.activeRecently} label="Active in last 7 days"  pts="+5" />
+          <CheckRow done={breakdown.hasMessaging}   label="Replied to a buyer"     pts="+5" />
+        </div>
+      </div>
+
+      {/* Reputation — 20 max */}
+      <div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+          <span>Reputation</span>
+          <span className="text-gray-300">20 max</span>
+        </p>
+        <div className="space-y-1.5">
+          <CheckRow done={breakdown.responseRate90} label="Response rate 90%+"    pts="+10" />
+          <CheckRow done={breakdown.responseRate70} label="Response rate 70%+"    pts="+5"  />
+          <CheckRow done={breakdown.fastResponder}  label="Avg reply under 2 hrs" pts="+10" />
+        </div>
+      </div>
+
+      {/* Account Age — 20 max */}
+      <div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+          <span>Account Age</span>
+          <span className="text-gray-300">20 max</span>
+        </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${ageScore > 0 ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+              {ageScore > 0
+                ? <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+              }
+            </div>
+            <span className={`text-xs font-medium ${ageScore > 0 ? 'text-gray-700' : 'text-gray-400'}`}>{ageLabel}</span>
+          </div>
+          <span className={`text-[10px] font-bold ${ageScore > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>+{ageScore}</span>
+        </div>
+      </div>
+
+    </div>
+  )
+}
+
+function TrustImprovementGuide({ breakdown, sellerMetrics }) {
+  if (!breakdown) return null
+
+  const actions = [
+    { key: 'phone',          label: 'Add your phone number',     pts: 10, link: '/dashboard/settings', cta: 'Add phone'     },
+    { key: 'profileImage',   label: 'Upload a profile photo',    pts:  5, link: '/dashboard/settings', cta: 'Add photo'     },
+    { key: 'bio',            label: 'Write a bio about yourself', pts: 5, link: '/dashboard/settings', cta: 'Write bio'     },
+    { key: 'location',       label: 'Set your location',         pts:  5, link: '/dashboard/settings', cta: 'Set location'  },
+    { key: 'firstListing',   label: 'Post your first listing',   pts:  5, link: '/create-listing',     cta: 'Post listing'  },
+    { key: 'threeListings',  label: 'Get to 3 listings',         pts:  5, link: '/create-listing',     cta: 'Post more'     },
+    { key: 'fiveListings',   label: 'Get to 5 listings',         pts:  5, link: '/create-listing',     cta: 'Post more'     },
+    { key: 'activeRecently', label: 'Log in and stay active',    pts:  5, link: '/listings',           cta: 'Browse'        },
+    { key: 'hasMessaging',   label: 'Reply to a buyer message',  pts:  5, link: '/dashboard/messages', cta: 'View messages' },
   ]
+
+  const missing = actions.filter((a) => !breakdown[a.key])
+
+  const suggestions = [...missing]
+  if ((sellerMetrics?.totalInquiries ?? 0) >= 3 && (sellerMetrics?.responseRate ?? 100) < 90) {
+    const alreadyIn = suggestions.some((s) => s.key === 'hasMessaging')
+    if (!alreadyIn) {
+      suggestions.push({
+        key: 'response', label: 'Boost response rate to 90%+', pts: 10,
+        link: '/dashboard/messages', cta: 'View messages',
+      })
+    }
+  }
+
+  if (!suggestions.length) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 font-semibold">
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Profile fully optimized — great job!
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-2">
-      {items.map((item) => {
-        const done = breakdown?.[item.key]
-        return (
-          <div key={item.key} className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
-                {done
-                  ? <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                }
-              </div>
-              <span className={`text-xs font-medium ${done ? 'text-gray-700' : 'text-gray-400'}`}>{item.label}</span>
-            </div>
-            <span className={`text-[10px] font-bold ${done ? 'text-emerald-600' : 'text-gray-300'}`}>+{item.pts}</span>
+      {suggestions.slice(0, 3).map((s) => (
+        <Link
+          key={s.key}
+          to={s.link}
+          className="flex items-center justify-between gap-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-xl px-4 py-3 transition-colors group"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
+            <p className="text-xs font-semibold text-indigo-800 truncate">{s.label}</p>
+            {s.pts && <span className="text-[10px] font-bold text-indigo-500 flex-shrink-0">+{s.pts} pts</span>}
           </div>
-        )
-      })}
+          <span className="text-[10px] font-bold text-indigo-600 whitespace-nowrap group-hover:underline">{s.cta} →</span>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function ProfileCompletionWidget({ pct }) {
+  const checks = pct ?? 0
+  const color  = checks < 40 ? 'bg-rose-500' : checks < 70 ? 'bg-amber-500' : 'bg-emerald-500'
+  const label  = checks < 40 ? 'text-rose-600' : checks < 70 ? 'text-amber-600' : 'text-emerald-600'
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative w-14 h-14 flex-shrink-0">
+        <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="#f3f4f6" strokeWidth="5" />
+          <circle
+            cx="28" cy="28" r="22" fill="none"
+            stroke={checks >= 70 ? '#10b981' : checks >= 40 ? '#f59e0b' : '#f43f5e'}
+            strokeWidth="5"
+            strokeDasharray={`${(checks / 100) * 138.2} 138.2`}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dasharray 0.7s ease' }}
+          />
+        </svg>
+        <span className={`absolute inset-0 flex items-center justify-center text-xs font-black ${label}`}>{checks}%</span>
+      </div>
+      <div>
+        <p className="text-sm font-bold text-gray-900">Profile Completion</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {checks >= 100 ? 'Fully complete' : checks >= 70 ? 'Almost there' : 'Keep going'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function GhostRiskSection({ ghostRisk, sellerMetrics }) {
+  if (!sellerMetrics?.totalInquiries) return null
+  const score   = ghostRisk?.score ?? 0
+  const flagged = ghostRisk?.flagged ?? false
+
+  if (!flagged && score < 25) return null
+
+  return (
+    <div className={`rounded-2xl border p-5 space-y-3 ${flagged ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+      <div className="flex items-center gap-2">
+        <svg className={`w-4 h-4 flex-shrink-0 ${flagged ? 'text-amber-600' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <h3 className={`text-sm font-bold ${flagged ? 'text-amber-800' : 'text-gray-700'}`}>
+          {flagged ? 'Ghost Seller Risk Detected' : 'Activity Warning'}
+        </h3>
+      </div>
+      {flagged ? (
+        <>
+          <p className="text-xs text-amber-700 leading-relaxed">
+            Your account has been flagged for low responsiveness. Buyers may see an "inactive seller" warning on your listings.
+          </p>
+          <p className="text-xs font-semibold text-amber-800">To fix this:</p>
+          <ul className="space-y-1">
+            {[
+              'Reply to pending buyer messages',
+              'Log in regularly and stay active',
+              'Keep your listings up to date',
+            ].map((tip) => (
+              <li key={tip} className="flex items-start gap-1.5 text-xs text-amber-700">
+                <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                {tip}
+              </li>
+            ))}
+          </ul>
+          <Link
+            to="/dashboard/messages"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            View Messages →
+          </Link>
+        </>
+      ) : (
+        <p className="text-xs text-gray-600 leading-relaxed">
+          Your response rate is below 80%. Stay active to avoid an inactive seller flag.
+        </p>
+      )}
     </div>
   )
 }
@@ -159,7 +371,7 @@ function BadgesCard({ badges }) {
 function SellerStatsCard({ metrics }) {
   if (!metrics?.totalInquiries) return null
 
-  const rate = metrics.responseRate ?? 0
+  const rate     = metrics.responseRate ?? 0
   const rateColor = rate >= 80 ? 'text-emerald-600' : rate >= 50 ? 'text-amber-600' : 'text-rose-600'
   const rateBg    = rate >= 80 ? 'bg-emerald-50'    : rate >= 50 ? 'bg-amber-50'    : 'bg-rose-50'
 
@@ -198,6 +410,7 @@ export default function ProfilePage() {
   const [breakdown,     setBreakdown]     = useState(null)
   const [badges,        setBadges]        = useState([])
   const [sellerMetrics, setSellerMetrics] = useState(null)
+  const [ghostRisk,     setGhostRisk]     = useState(null)
   const [listings,      setListings]      = useState([])
   const [loading,       setLoading]       = useState(true)
 
@@ -210,6 +423,7 @@ export default function ProfilePage() {
         setBreakdown(profileRes.trustBreakdown)
         setBadges(profileRes.user.badges || [])
         setSellerMetrics(profileRes.user.sellerMetrics || null)
+        setGhostRisk(profileRes.user.ghostRisk || null)
         setListings(listingsRes.listings || [])
         updateUser(profileRes.user)
       })
@@ -223,6 +437,7 @@ export default function ProfilePage() {
   const soldListings   = listings.filter((l) => l.status === 'sold').length
   const totalViews     = listings.reduce((sum, l) => sum + (l.viewsCount || 0), 0)
   const avatarSrc      = data?.profileImage?.trim() || defaultAvatar
+  const profilePct     = data?.profileCompletion ?? 0
 
   if (loading) {
     return (
@@ -299,6 +514,11 @@ export default function ProfilePage() {
         ))}
       </div>
 
+      {/* Profile Completion Widget */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <ProfileCompletionWidget pct={profilePct} />
+      </div>
+
       {/* Trust score card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
         <div>
@@ -307,15 +527,22 @@ export default function ProfilePage() {
         </div>
         <TrustBar score={data?.trustScore ?? 0} />
         <div className="border-t border-gray-50 pt-4">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">How to improve</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Score breakdown</p>
           <TrustChecklist breakdown={breakdown} />
         </div>
-        {breakdown && !breakdown.phone && (
-          <Link to="/dashboard/settings" className="block text-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-            Complete your profile to boost score →
-          </Link>
-        )}
       </div>
+
+      {/* Trust Improvement Guide */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Next Steps to Improve</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Actions that will boost your trust score most</p>
+        </div>
+        <TrustImprovementGuide breakdown={breakdown} sellerMetrics={sellerMetrics} />
+      </div>
+
+      {/* Ghost Risk */}
+      <GhostRiskSection ghostRisk={ghostRisk} sellerMetrics={sellerMetrics} />
 
       {/* Badges */}
       <BadgesCard badges={badges} />
