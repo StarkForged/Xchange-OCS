@@ -22,6 +22,7 @@ export const getConversations = async () => {
       title:  chat.listing?.title  || '',
       images: chat.listing?.images || [],
       price:  chat.listing?.price  || null,
+      status: chat.listing?.status || 'active',
     },
     participants: (chat.participants || []).map((p) => ({
       _id:  String(p._id),

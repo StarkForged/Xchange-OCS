@@ -291,6 +291,7 @@ export default function ChatPage() {
   const listingImg = listing?.images?.[0] ?? defaultImage
   const grouped    = groupMessages(messages)
   const canSend    = inputText.trim().length > 0
+  const isSold     = listing?.status === 'sold'
 
   if (loading) {
     return (
@@ -350,13 +351,36 @@ export default function ChatPage() {
           {/* Listing context */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="hidden sm:block text-right">
-              <p className="text-xs text-gray-400 truncate max-w-[160px] leading-tight">{listing?.title}</p>
+              <div className="flex items-center justify-end gap-1.5 mb-0.5">
+                <p className="text-xs text-gray-400 truncate max-w-[140px] leading-tight">{listing?.title}</p>
+                {isSold && (
+                  <span className="flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 uppercase tracking-wide">
+                    Sold
+                  </span>
+                )}
+              </div>
               <p className="text-sm font-black text-indigo-600 leading-tight">{formatPrice(listing?.price)}</p>
             </div>
             <img src={listingImg} alt={listing?.title} className="w-10 h-10 rounded-lg object-cover border border-gray-200 shadow-sm" />
           </div>
         </div>
       </div>
+
+      {/* Sold banner */}
+      {isSold && (
+        <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3">
+          <div className="max-w-3xl mx-auto flex items-start gap-3">
+            <span className="text-amber-500 flex-shrink-0 mt-0.5 text-base">⚠</span>
+            <div>
+              <p className="text-sm font-bold text-amber-800 leading-tight mb-0.5">Listing Sold</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                This item has been marked as sold. You may continue messaging to complete the transaction.
+                New buyers can no longer contact the seller about this listing.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-gray-50/60">

@@ -42,7 +42,7 @@ const listingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'sold', 'inactive'],
+      enum: ['active', 'sold', 'paused'],
       default: 'active',
     },
     viewsCount:     { type: Number, default: 0 },

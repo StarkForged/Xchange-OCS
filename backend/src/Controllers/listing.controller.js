@@ -45,7 +45,7 @@ exports.getListings = async (req, res, next) => {
       sortBy   = 'latest',
     } = req.query
 
-    const query = {}
+    const query = { status: 'active' }
 
     if (category && category !== 'all') {
       query['category.id'] = category
@@ -203,6 +203,40 @@ exports.getSimilarListings = async (req, res, next) => {
     }
 
     res.json({ listings: similar })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// PATCH /api/listings/:id/status  (protected, owner only) ─────────────────────
+
+const ALLOWED_TRANSITIONS = {
+  active: ['paused', 'sold'],
+  paused: ['active', 'sold'],
+  sold:   [],
+}
+
+exports.updateListingStatus = async (req, res, next) => {
+  try {
+    const { status: newStatus } = req.body
+    if (!newStatus) throw new ApiError(400, 'status is required')
+
+    const listing = await Listing.findById(req.params.id)
+    if (!listing) throw new ApiError(404, 'Listing not found')
+
+    if (String(listing.seller) !== String(req.user._id)) {
+      throw new ApiError(403, 'Only the listing owner can update status')
+    }
+
+    const allowed = ALLOWED_TRANSITIONS[listing.status] ?? []
+    if (!allowed.includes(newStatus)) {
+      throw new ApiError(400, `Cannot transition from "${listing.status}" to "${newStatus}"`)
+    }
+
+    listing.status = newStatus
+    await listing.save()
+
+    res.json({ listing })
   } catch (err) {
     next(err)
   }

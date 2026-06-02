@@ -26,6 +26,12 @@ export const getMyListingsAPI = async () => {
   return response.data
 }
 
+// PATCH /api/listings/:id/status  (requires auth)
+export const updateListingStatusAPI = async (id, status) => {
+  const response = await api.patch(`/listings/${id}/status`, { status })
+  return response.data
+}
+
 // POST /api/listings  — sends multipart/form-data so multer can parse files
 export const createListingAPI = async (data) => {
   const formData = new FormData()

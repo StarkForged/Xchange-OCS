@@ -121,6 +121,7 @@ export default function ListingDetailPage() {
   const displayImages  = images?.length > 0 ? images : [defaultImage]
   const mainImage      = displayImages[activeImage] ?? defaultImage
   const isSold         = status === 'sold'
+  const isPaused       = status === 'paused'
   const hasAttributes  = attributes && Object.keys(attributes).length > 0
   const saves          = favoritesCount ?? 0
   const views          = viewsCount ?? 0
@@ -188,6 +189,15 @@ export default function ListingDetailPage() {
                 <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-10">
                   <span className="bg-white text-gray-800 text-sm font-bold px-6 py-2.5 rounded-full tracking-widest shadow-lg uppercase">
                     Sold
+                  </span>
+                </div>
+              )}
+
+              {/* Paused overlay */}
+              {isPaused && (
+                <div className="absolute inset-0 bg-amber-900/45 flex items-center justify-center z-10">
+                  <span className="bg-amber-100 text-amber-800 text-sm font-bold px-6 py-2.5 rounded-full tracking-widest shadow-lg uppercase">
+                    Paused
                   </span>
                 </div>
               )}
@@ -262,6 +272,11 @@ export default function ListingDetailPage() {
                   Sold
                 </span>
               )}
+              {isPaused && (
+                <span className="mb-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full font-bold">
+                  Paused
+                </span>
+              )}
             </div>
 
             {/* Location */}
@@ -292,16 +307,25 @@ export default function ListingDetailPage() {
 
             {/* Action buttons */}
             <div className="flex flex-col gap-3">
-              <button
-                disabled={isSold}
-                onClick={() => navigate(`/chat/${id}`)}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed disabled:transform-none text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md text-sm tracking-wide"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                {isSold ? 'Item Sold' : 'Chat with Seller'}
-              </button>
+              {isSold && (
+                <div className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-500 font-semibold py-4 px-6 rounded-xl text-sm tracking-wide border border-gray-200">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  This item is no longer available
+                </div>
+              )}
+              {!isSold && (
+                <button
+                  onClick={() => navigate(`/chat/${id}`)}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:shadow-md text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md text-sm tracking-wide"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Chat with Seller
+                </button>
+              )}
 
               <button
                 onClick={() => setSaved((s) => !s)}

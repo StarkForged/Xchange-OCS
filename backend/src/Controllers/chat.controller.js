@@ -12,6 +12,10 @@ exports.getOrCreateChat = async (req, res, next) => {
     const listing = await Listing.findById(listingId).lean()
     if (!listing) throw new ApiError(404, 'Listing not found')
 
+    if (listing.status === 'sold') {
+      throw new ApiError(400, 'This item is no longer available')
+    }
+
     const sellerId = String(listing.seller)
     const buyerId  = String(req.user._id)
 
@@ -39,7 +43,7 @@ exports.getOrCreateChat = async (req, res, next) => {
 exports.getChats = async (req, res, next) => {
   try {
     const chats = await Chat.find({ participants: req.user._id })
-      .populate('listing', 'title images price seller')
+      .populate('listing', 'title images price seller status')
       .populate('participants', 'name _id')
       .sort({ updatedAt: -1 })
       .lean()

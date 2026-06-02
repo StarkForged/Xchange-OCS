@@ -54,6 +54,7 @@ export default function ListingCard({ listing }) {
   const imgAreaRef     = useRef(null)   // ref to image area div, used for fly animation
 
   const isSold     = status === 'sold'
+  const isPaused   = status === 'paused'
   const sellerObj  = typeof seller === 'object' ? seller : null
   const sellerName = sellerObj?.name || 'Seller'
   const isVerified = !!sellerObj?.name
@@ -200,6 +201,13 @@ export default function ListingCard({ listing }) {
           </div>
         )}
 
+        {/* Paused overlay */}
+        {isPaused && (
+          <div className="absolute inset-0 bg-amber-900/40 flex items-center justify-center z-10">
+            <span className="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full tracking-wide uppercase">Paused</span>
+          </div>
+        )}
+
         {/* Category badge — top left */}
         <span className="absolute top-2 left-2 z-10 bg-white/90 backdrop-blur-sm text-indigo-700 text-[11px] font-semibold px-2.5 py-0.5 rounded-full capitalize shadow-sm">
           {category?.name || 'General'}
@@ -231,7 +239,7 @@ export default function ListingCard({ listing }) {
         )}
 
         {/* Prev / Next arrows (on hover) */}
-        {hasMultiple && hovered && !isSold && (
+        {hasMultiple && hovered && !isSold && !isPaused && (
           <>
             <button onClick={goPrev} className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-700 hover:bg-white hover:shadow-lg transition-all hover:scale-110" aria-label="Previous">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
