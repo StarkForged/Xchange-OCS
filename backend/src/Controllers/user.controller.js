@@ -1,6 +1,7 @@
 const mongoose = require('mongoose')
 const User     = require('../Models/User')
 const Listing  = require('../Models/Listing')
+const Review   = require('../Models/Review')
 const ApiError = require('../Utils/ApiError')
 
 const { computeTrustScore }        = require('../Utils/trustScore')
@@ -10,6 +11,39 @@ const {
   computeGhostRisk,
   computeBadges,
 } = require('../Utils/sellerMetrics')
+
+// ── Internal: compute review stats for a user ────────────────────────────────
+
+async function computeReviewStats(userId) {
+  const [reviews, userCounters] = await Promise.all([
+    Review.find({ reviewee: userId }).select('rating').lean(),
+    User.findById(userId).select('completedDeals buyerCancelledDeals sellerCancelledDeals').lean(),
+  ])
+
+  const reviewCount         = reviews.length
+  const completedDeals      = userCounters?.completedDeals       ?? 0
+  const buyerCancelledDeals  = userCounters?.buyerCancelledDeals  ?? 0
+  const sellerCancelledDeals = userCounters?.sellerCancelledDeals ?? 0
+
+  // responsibleCancellations = only deals THIS user chose to cancel.
+  // Deals cancelled by the other party do not penalise this user.
+  const responsibleCancellations = buyerCancelledDeals + sellerCancelledDeals
+  const totalTx        = completedDeals + responsibleCancellations
+  const completionRate = totalTx > 0
+    ? Math.round((completedDeals / totalTx) * 100)
+    : 100  // no history yet → full marks by default
+
+  const base = { completedDeals, buyerCancelledDeals, sellerCancelledDeals, responsibleCancellations, completionRate }
+
+  if (reviewCount === 0) {
+    return { averageRating: 0, reviewCount: 0, ...base }
+  }
+
+  const total = reviews.reduce((sum, r) => sum + r.rating, 0)
+  const averageRating = Math.round((total / reviewCount) * 10) / 10
+
+  return { averageRating, reviewCount, ...base }
+}
 
 // ── Internal: recompute and persist all reputation fields ─────────────────────
 
@@ -23,14 +57,17 @@ async function refreshReputation(user) {
   const { pct: profileCompletion, checks: completionChecks } =
     computeProfileCompletion(user, listingCount)
 
-  // 3. Trust score (uses metrics for response bonus)
-  const { score: trustScore, breakdown } =
-    computeTrustScore(user, listingCount, metrics)
+  // 3. Review stats for trust score integration
+  const reviewStats = await computeReviewStats(user._id)
 
-  // 4. Ghost risk
+  // 4. Trust score (uses metrics + reviewStats)
+  const { score: trustScore, breakdown } =
+    computeTrustScore(user, listingCount, metrics, reviewStats)
+
+  // 5. Ghost risk
   const ghostRisk = computeGhostRisk(metrics)
 
-  // 5. Badges (uses fresh trustScore, not stale DB value)
+  // 6. Badges (uses fresh trustScore, not stale DB value)
   const badges = computeBadges(user, metrics, listingCount, profileCompletion, trustScore)
 
   // Persist only if anything changed (avoids unnecessary writes)
@@ -59,6 +96,7 @@ async function refreshReputation(user) {
     ghostRisk,
     badges,
     listingCount,
+    reviewStats,
   }
 }
 
@@ -86,6 +124,7 @@ exports.getProfile = async (req, res, next) => {
         badges:            rep.badges,
         sellerMetrics:     rep.metrics,
         ghostRisk:         rep.ghostRisk,
+        reviewStats:       rep.reviewStats,
         createdAt:         user.createdAt,
       },
       trustBreakdown: rep.breakdown,
@@ -96,19 +135,31 @@ exports.getProfile = async (req, res, next) => {
 }
 
 // ── PUT /api/users/profile ────────────────────────────────────────────────────
+// Requires current password for verification before applying any changes.
 
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { name, bio, phone, location, profileImage } = req.body
+    const { name, bio, phone, location, profileImage, password } = req.body
 
-    const user = await User.findById(req.user._id)
+    if (!password) throw new ApiError(400, 'Password is required to save changes')
+
+    // Fetch with password field (select: false by default)
+    const user = await User.findById(req.user._id).select('+password')
     if (!user) throw new ApiError(404, 'User not found')
 
-    if (name?.trim())            user.name         = name.trim()
-    if (bio      !== undefined)  user.bio          = bio.trim()
-    if (phone    !== undefined)  user.phone        = phone.trim()
-    if (location !== undefined)  user.location     = location.trim()
+    const isMatch = await user.matchPassword(password)
+    if (!isMatch) throw new ApiError(401, 'Incorrect password')
+
+    // Apply profile field updates
+    if (name?.trim())               user.name         = name.trim()
+    if (bio      !== undefined)     user.bio          = bio.trim()
+    if (phone    !== undefined)     user.phone        = phone.trim()
+    if (location !== undefined)     user.location     = location.trim()
     if (profileImage !== undefined) user.profileImage = profileImage
+
+    // Always persist profile fields immediately — do not rely on refreshReputation's
+    // conditional save, which only fires when trust/completion values change.
+    await user.save()
 
     const rep = await refreshReputation(user)
 
@@ -127,6 +178,7 @@ exports.updateProfile = async (req, res, next) => {
         badges:            rep.badges,
         sellerMetrics:     rep.metrics,
         ghostRisk:         rep.ghostRisk,
+        reviewStats:       rep.reviewStats,
         createdAt:         user.createdAt,
       },
     })
@@ -135,7 +187,7 @@ exports.updateProfile = async (req, res, next) => {
   }
 }
 
-// ── GET /api/users/:userId  (public — shown on listing detail page) ───────────
+// ── GET /api/users/:userId  (public profile page) ────────────────────────────
 
 exports.getPublicProfile = async (req, res, next) => {
   try {
@@ -148,18 +200,31 @@ exports.getPublicProfile = async (req, res, next) => {
     const user = await User.findById(userId).lean()
     if (!user) throw new ApiError(404, 'User not found')
 
-    const listingCount = await Listing.countDocuments({ seller: userId })
+    const [listingCount, activeListings, reviewStats, recentReviews] = await Promise.all([
+      Listing.countDocuments({ seller: userId }),
+      Listing.find({ seller: userId, status: 'active' })
+        .select('title price images category location createdAt viewsCount')
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .lean(),
+      computeReviewStats(userId),
+      Review.find({ reviewee: userId })
+        .populate('reviewer', 'name profileImage')
+        .populate('listing', 'title')
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+    ])
 
-    // For a public view, return pre-computed reputation fields only.
-    // Avoid running the heavy refreshReputation on every listing page load.
     res.json({
       user: {
-        _id:               user._id,
-        name:              user.name,
-        profileImage:      user.profileImage,
-        trustScore:        user.trustScore,
-        profileCompletion: user.profileCompletion,
-        badges:            user.badges || [],
+        _id:          user._id,
+        name:         user.name,
+        profileImage: user.profileImage,
+        bio:          user.bio || '',
+        location:     user.location || '',
+        trustScore:   user.trustScore,
+        badges:       user.badges || [],
         sellerMetrics: {
           responseRate:      user.sellerMetrics?.responseRate      ?? 0,
           avgResponseTimeMs: user.sellerMetrics?.avgResponseTimeMs ?? null,
@@ -169,9 +234,13 @@ exports.getPublicProfile = async (req, res, next) => {
         ghostRisk: {
           flagged: user.ghostRisk?.flagged ?? false,
         },
+        reviewStats,
         listingCount,
+        activeListingCount: activeListings.length,
         createdAt: user.createdAt,
       },
+      activeListings,
+      recentReviews,
     })
   } catch (err) {
     next(err)

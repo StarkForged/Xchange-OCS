@@ -81,6 +81,13 @@ const userSchema = new mongoose.Schema(
       avgResponseTimeMs:  { type: Number, default: null },
       lastActiveAt:       { type: Date,   default: null },
     },
+    // Transaction reliability counters — incremented atomically when deals complete/cancel.
+    completedDeals:      { type: Number, default: 0, min: 0 },
+    // Role-specific cancellation counters.
+    // Only the party who initiated the cancellation receives a penalty.
+    buyerCancelledDeals:  { type: Number, default: 0, min: 0 },
+    sellerCancelledDeals: { type: Number, default: 0, min: 0 },
+
     // Ghost seller detection. Flagged = score >= 50.
     ghostRisk: {
       score:       { type: Number,  default: 0 },

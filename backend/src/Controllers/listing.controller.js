@@ -1,6 +1,8 @@
 const streamifier = require('streamifier')
+const mongoose   = require('mongoose')
 const Listing    = require('../Models/Listing')
 const User       = require('../Models/User')
+const Chat       = require('../Models/Chat')
 const ApiError   = require('../Utils/ApiError')
 const cloudinary = require('../Config/cloudinary')
 
@@ -218,7 +220,7 @@ const ALLOWED_TRANSITIONS = {
 
 exports.updateListingStatus = async (req, res, next) => {
   try {
-    const { status: newStatus } = req.body
+    const { status: newStatus, buyerId } = req.body
     if (!newStatus) throw new ApiError(400, 'status is required')
 
     const listing = await Listing.findById(req.params.id)
@@ -234,9 +236,174 @@ exports.updateListingStatus = async (req, res, next) => {
     }
 
     listing.status = newStatus
+
+    // When marking as sold, attach buyer if provided
+    if (newStatus === 'sold' && buyerId) {
+      if (!mongoose.Types.ObjectId.isValid(buyerId)) {
+        throw new ApiError(400, 'Invalid buyerId')
+      }
+      // Verify buyer actually chatted about this listing
+      const chatExists = await Chat.exists({
+        listing:      listing._id,
+        participants: buyerId,
+      })
+      if (!chatExists) {
+        throw new ApiError(400, 'Selected buyer did not participate in chats for this listing')
+      }
+      listing.transaction = {
+        buyer:            buyerId,
+        sellerConfirmed:  false,
+        buyerConfirmed:   false,
+        completedAt:      null,
+      }
+    }
+
     await listing.save()
 
     res.json({ listing })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// GET /api/listings/:id/chat-participants  (protected, owner only) ─────────────
+// Returns unique buyers who have chatted about this listing — for the sold flow.
+
+exports.getChatParticipants = async (req, res, next) => {
+  try {
+    const listing = await Listing.findById(req.params.id).lean()
+    if (!listing) throw new ApiError(404, 'Listing not found')
+
+    if (String(listing.seller) !== String(req.user._id)) {
+      throw new ApiError(403, 'Only the listing owner can view chat participants')
+    }
+
+    const chats = await Chat.find({ listing: listing._id })
+      .populate('participants', 'name profileImage')
+      .lean()
+
+    const sellerStr = String(req.user._id)
+    const buyerMap  = new Map()
+
+    for (const chat of chats) {
+      for (const p of chat.participants) {
+        const pid = String(p._id)
+        if (pid !== sellerStr && !buyerMap.has(pid)) {
+          buyerMap.set(pid, { _id: p._id, name: p.name, profileImage: p.profileImage })
+        }
+      }
+    }
+
+    res.json({ participants: [...buyerMap.values()] })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// PATCH /api/listings/:id/transaction/confirm  (protected) ────────────────────
+// Either the seller or buyer confirms their side of the transaction.
+// When both confirm, completedAt is set and reviews are unlocked.
+
+exports.confirmTransaction = async (req, res, next) => {
+  try {
+    const listing = await Listing.findById(req.params.id)
+    if (!listing) throw new ApiError(404, 'Listing not found')
+
+    if (listing.status !== 'sold') {
+      throw new ApiError(400, 'Listing must be marked sold before confirming a transaction')
+    }
+
+    if (!listing.transaction?.buyer) {
+      throw new ApiError(400, 'No transaction buyer set for this listing')
+    }
+
+    if (listing.transaction.completedAt) {
+      return res.json({ listing, alreadyCompleted: true })
+    }
+
+    const meStr     = String(req.user._id)
+    const sellerStr = String(listing.seller)
+    const buyerStr  = String(listing.transaction.buyer)
+
+    if (meStr !== sellerStr && meStr !== buyerStr) {
+      throw new ApiError(403, 'Only the transaction participants can confirm')
+    }
+
+    if (meStr === sellerStr) listing.transaction.sellerConfirmed = true
+    if (meStr === buyerStr)  listing.transaction.buyerConfirmed  = true
+
+    // Unlock reviews when both sides confirm
+    if (listing.transaction.sellerConfirmed && listing.transaction.buyerConfirmed) {
+      listing.transaction.completedAt = new Date()
+      // Increment completedDeals counter on both participants (non-blocking)
+      User.updateOne({ _id: listing.seller },            { $inc: { completedDeals: 1 } }).exec()
+      User.updateOne({ _id: listing.transaction.buyer }, { $inc: { completedDeals: 1 } }).exec()
+    }
+
+    await listing.save()
+
+    res.json({
+      listing,
+      dealCompleted: !!listing.transaction.completedAt,
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// PATCH /api/listings/:id/transaction/cancel  (protected) ─────────────────────
+// Either participant can cancel a pending (not-yet-completed) transaction.
+// Only the party who initiates the cancellation receives a reliability penalty.
+// Listing moves to paused — seller must explicitly resume before it is public again.
+
+exports.cancelTransaction = async (req, res, next) => {
+  try {
+    const { reason = '' } = req.body
+    const listing = await Listing.findById(req.params.id)
+    if (!listing) throw new ApiError(404, 'Listing not found')
+
+    if (listing.status !== 'sold') {
+      throw new ApiError(400, 'No active transaction to cancel')
+    }
+    if (!listing.transaction?.buyer) {
+      throw new ApiError(400, 'No transaction buyer set')
+    }
+    if (listing.transaction.completedAt) {
+      throw new ApiError(400, 'Cannot cancel a completed transaction')
+    }
+    if (listing.transaction.cancelled) {
+      throw new ApiError(400, 'Transaction is already cancelled')
+    }
+
+    const meStr     = String(req.user._id)
+    const sellerStr = String(listing.seller)
+    const buyerStr  = String(listing.transaction.buyer)
+
+    if (meStr !== sellerStr && meStr !== buyerStr) {
+      throw new ApiError(403, 'Only transaction participants can cancel')
+    }
+
+    // Record cancellation — store who cancelled and why
+    listing.transaction.cancelled          = true
+    listing.transaction.cancelledAt        = new Date()
+    listing.transaction.cancelledBy        = req.user._id
+    listing.transaction.cancellationReason = reason.trim()
+
+    // Paused, not active: the seller must explicitly resume before the listing
+    // re-enters the public marketplace. Cancellation ≠ ready to sell immediately.
+    listing.status = 'paused'
+
+    await listing.save()
+
+    // Only the party responsible for the cancellation receives a penalty.
+    // The innocent party's completion rate is unaffected.
+    if (meStr === sellerStr) {
+      User.updateOne({ _id: listing.seller }, { $inc: { sellerCancelledDeals: 1 } }).exec()
+    } else {
+      User.updateOne({ _id: listing.transaction.buyer }, { $inc: { buyerCancelledDeals: 1 } }).exec()
+    }
+
+    res.json({ listing, cancelled: true })
   } catch (err) {
     next(err)
   }

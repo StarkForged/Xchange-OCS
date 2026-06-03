@@ -45,6 +45,27 @@ const listingSchema = new mongoose.Schema(
       enum: ['active', 'sold', 'paused'],
       default: 'active',
     },
+    // Embedded transaction — set when seller marks SOLD and selects a buyer.
+    // Reviews are locked behind transaction.completedAt being non-null.
+    transaction: {
+      buyer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+      sellerConfirmed: { type: Boolean, default: false },
+      buyerConfirmed:  { type: Boolean, default: false },
+      completedAt:     { type: Date,    default: null  },
+      // Cancellation fields — set when either party cancels before completion
+      cancelled:           { type: Boolean, default: false },
+      cancelledAt:         { type: Date,    default: null  },
+      cancelledBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+      cancellationReason:  { type: String,  default: ''   },
+    },
     viewsCount:     { type: Number, default: 0 },
     favoritesCount: { type: Number, default: 0 },
   },

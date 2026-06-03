@@ -18,6 +18,8 @@ import MessagesDashboard   from '../pages/dashboard/MessagesDashboard'
 import SavedListingsPage   from '../pages/dashboard/SavedListingsPage'
 import ProfilePage         from '../pages/dashboard/ProfilePage'
 import SettingsPage        from '../pages/dashboard/SettingsPage'
+import ReviewsPage         from '../pages/dashboard/ReviewsPage'
+import PublicProfilePage   from '../pages/users/PublicProfilePage'
 
 export default function AppRouter() {
   return (
@@ -37,6 +39,7 @@ export default function AppRouter() {
             <Route path="/create-listing"    element={<CreateListingPage />} />
             <Route path="/chat"              element={<ChatDashboard />} />
             <Route path="/chat/:listingId"   element={<ChatPage />} />
+            <Route path="/users/:userId"     element={<PublicProfilePage />} />
           </Route>
 
           {/* Dashboard layout (sidebar + nested pages) */}
@@ -47,6 +50,7 @@ export default function AppRouter() {
             <Route path="/dashboard/saved"     element={<SavedListingsPage />} />
             <Route path="/dashboard/profile"   element={<ProfilePage />} />
             <Route path="/dashboard/settings"  element={<SettingsPage />} />
+            <Route path="/dashboard/reviews"   element={<ReviewsPage />} />
           </Route>
 
         </Route>

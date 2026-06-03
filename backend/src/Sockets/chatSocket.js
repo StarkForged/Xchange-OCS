@@ -92,7 +92,9 @@ const registerChatSocket = (io) => {
         }
       }
 
-      socket.to(room).emit('receive_message', normalised)
+      // Include listingId so the client can discard messages that arrived
+      // after a room leave but before the server-side leave was processed.
+      socket.to(room).emit('receive_message', { ...normalised, listingId })
     })
 
     // Soft-delete — only the sender may delete

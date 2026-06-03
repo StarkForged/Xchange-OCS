@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import useAuthStore from '../../store/auth.Store'
 import { getConversations, getMessages } from '../../features/chat/chat.service'
+import { updateListingStatusAPI, confirmTransactionAPI, cancelTransactionAPI } from '../../api/listings.api'
+import { createReviewAPI } from '../../api/review.api'
 import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
@@ -161,6 +163,396 @@ function MessageMenu({ item, mine, onCopy, onDelete }) {
   )
 }
 
+// ── Mark Sold Confirmation Modal ─────────────────────────────────────────────
+
+function MarkSoldModal({ listing, buyer, listingStatus, onPause, onConfirm, onCancel, busy }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <button onClick={onCancel} className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors" aria-label="Close">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <div className="bg-amber-50 border-b border-amber-100 px-6 py-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-base font-bold text-gray-900">Confirm Sale</h3>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+            <img src={buyer?.profileImage || defaultAvatar} alt={buyer?.name} className="w-8 h-8 rounded-full object-cover border border-gray-200 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Buyer</p>
+              <p className="text-sm font-bold text-gray-900 truncate">{buyer?.name || 'Unknown'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+            <img src={listing?.images?.[0] || defaultImage} alt={listing?.title} className="w-8 h-8 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Listing</p>
+              <p className="text-sm font-bold text-gray-900 truncate">{listing?.title}</p>
+            </div>
+          </div>
+          <ul className="space-y-1.5">
+            {['Listing removed from marketplace search','New buyer chats are blocked','Reviews locked until both parties confirm'].map((item) => (
+              <li key={item} className="flex items-start gap-2 text-xs text-gray-500">
+                <span className="w-1 h-1 rounded-full bg-gray-400 flex-shrink-0 mt-1.5" />{item}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+            If the exchange hasn't happened yet, consider <strong>pausing</strong> the listing instead.
+          </p>
+        </div>
+        <div className="px-6 pb-6 space-y-2">
+          <button onClick={onConfirm} disabled={busy} className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition-colors disabled:opacity-50">
+            {busy ? 'Marking sold…' : 'Confirm Sold'}
+          </button>
+          {listingStatus !== 'paused' && (
+            <button onClick={onPause} disabled={busy} className="w-full py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-sm font-semibold transition-colors disabled:opacity-50">
+              Pause Listing Instead
+            </button>
+          )}
+          {listingStatus === 'paused' && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center font-medium">
+              Listing is currently paused — confirming will mark it sold.
+            </div>
+          )}
+          <button onClick={onCancel} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Transaction Panel (dashboard inline version) ──────────────────────────────
+
+const CANCEL_REASONS = {
+  buyer:  ['Seller stopped responding', 'Seller did not show up', 'Item different than described', 'Found another item', 'No longer interested', 'Other'],
+  seller: ['Buyer stopped responding', 'Buyer did not show up', 'Buyer changed mind', 'Item unavailable', 'Other'],
+}
+
+function CancellationReasonModal({ role, onConfirm, onClose, busy }) {
+  const [selected, setSelected] = useState('')
+  const [other,    setOther]    = useState('')
+  const reasons = CANCEL_REASONS[role] || CANCEL_REASONS.buyer
+  const finalReason = selected === 'Other' ? other.trim() : selected
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <button onClick={onClose} className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors" aria-label="Close">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <div className="bg-rose-50 border-b border-rose-100 px-5 py-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-rose-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <h3 className="text-sm font-bold text-gray-900">Cancel Transaction</h3>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-xs text-gray-500">Select a reason. This will be recorded and affect your completion rate.</p>
+          <div className="space-y-1.5">
+            {reasons.map((r) => (
+              <button
+                key={r}
+                onClick={() => setSelected(r)}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                  selected === r
+                    ? 'border-rose-400 bg-rose-50 text-rose-800'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          {selected === 'Other' && (
+            <textarea
+              value={other}
+              onChange={(e) => setOther(e.target.value)}
+              placeholder="Describe the reason…"
+              rows={2}
+              className="w-full text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:ring-2 focus:ring-rose-200"
+            />
+          )}
+        </div>
+        <div className="px-5 pb-5 flex gap-2">
+          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            Keep Transaction
+          </button>
+          <button
+            onClick={() => finalReason && onConfirm(finalReason)}
+            disabled={!finalReason || busy}
+            className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition-colors disabled:opacity-40"
+          >
+            {busy ? 'Cancelling…' : 'Confirm Cancel'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DashboardTransactionPanel({
+  listingId, listing, listingStatus, transaction,
+  buyerParticipant, currentUserId,
+  onMarkSold, onPause, onResume, onConfirmTransaction, onCancelTransaction,
+  actionBusy,
+}) {
+  const [reviewDone,      setReviewDone]      = useState(false)
+  const [reviewBusy,      setReviewBusy]      = useState(false)
+  const [reviewError,     setReviewError]     = useState('')
+  const [rating,          setRating]          = useState(0)
+  const [hoverRating,     setHoverRating]     = useState(0)
+  const [comment,         setComment]         = useState('')
+  const [txConfirmed,     setTxConfirmed]     = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+
+  // ── Role derived entirely from stored IDs — never from participant ordering ──
+  const meStr    = currentUserId ? String(currentUserId) : ''
+  // sellerId stored by chat.service as a top-level string on the listing object
+  const sellerStr = listing?.sellerId
+    ? String(listing.sellerId)
+    : listing?.seller
+      ? String(listing.seller._id ?? listing.seller)
+      : ''
+  const buyerStr  = transaction?.buyer ? String(transaction.buyer) : ''
+
+  const isSeller        = meStr !== '' && meStr === sellerStr
+  const isSelectedBuyer = buyerStr !== '' && meStr === buyerStr
+  const isParticipant   = isSeller || isSelectedBuyer
+
+  const myConfirmed   = isSeller ? transaction?.sellerConfirmed : transaction?.buyerConfirmed
+  const dealCompleted = !!(transaction?.completedAt)
+
+  const handleSubmitReview = async () => {
+    if (!rating) { setReviewError('Please select a rating'); return }
+    setReviewBusy(true)
+    setReviewError('')
+    try {
+      await createReviewAPI({ listingId, rating, comment })
+      setReviewDone(true)
+    } catch (e) {
+      setReviewError(e?.response?.data?.message || 'Failed to submit')
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
+  // ── ACTIVE ────────────────────────────────────────────────────────────────
+  if (listingStatus === 'active') {
+    if (!isSeller) return null
+    return (
+      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 py-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Active
+          </span>
+          <div className="flex-1" />
+          <Link to={`/listings/${listingId}`} className="text-xs font-semibold text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+            View Listing
+          </Link>
+          <button onClick={onPause} disabled={actionBusy} className="text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+            Pause
+          </button>
+          <button onClick={onMarkSold} disabled={actionBusy} className="text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+            Mark Sold
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── PAUSED ────────────────────────────────────────────────────────────────
+  if (listingStatus === 'paused') {
+
+    // Paused due to a cancelled transaction — show cancellation details
+    if (transaction?.cancelled) {
+      const cancelledByStr = transaction.cancelledBy ? String(transaction.cancelledBy) : null
+      // Role label derived purely from stored IDs — no participant lookup needed
+      const cancelledByLabel =
+        cancelledByStr === meStr     ? 'You' :
+        cancelledByStr === buyerStr  ? 'the buyer' :
+        cancelledByStr === sellerStr ? 'the seller' :
+        'a participant'
+
+      return (
+        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-4 py-3 space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-500 bg-gray-200 border border-gray-300 px-2 py-0.5 rounded-full">
+              Transaction Cancelled
+            </span>
+            {isSeller && (
+              <>
+                <div className="flex-1" />
+                <button onClick={onResume} disabled={actionBusy} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                  Resume Listing
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+            <span>Cancelled by: <span className="font-semibold text-gray-700">{cancelledByLabel}</span></span>
+            {transaction.cancellationReason && (
+              <span>Reason: <span className="font-semibold text-gray-700">{transaction.cancellationReason}</span></span>
+            )}
+          </div>
+          {isSeller && (
+            <p className="text-[11px] text-gray-400">Listing is paused. Resume when ready to relist or sell to someone else.</p>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Paused
+          </span>
+          {isSeller && (
+            <span className="text-xs text-amber-700 font-medium">Reserved · not publicly visible</span>
+          )}
+          {isSeller && (
+            <>
+              <div className="flex-1" />
+              <button onClick={onResume} disabled={actionBusy} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                Resume
+              </button>
+              <button onClick={onMarkSold} disabled={actionBusy} className="text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                Mark Sold
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── SOLD ──────────────────────────────────────────────────────────────────
+  if (listingStatus === 'sold') {
+
+    if (dealCompleted) {
+      return (
+        <div className="flex-shrink-0 bg-emerald-50 border-b border-emerald-200 px-4 py-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">Sold</span>
+            <span className="text-xs text-emerald-700 font-semibold">Deal Closed Successfully</span>
+          </div>
+          {isParticipant && !reviewDone && (
+            <div className="bg-white rounded-xl border border-emerald-200 p-3 space-y-2.5">
+              <p className="text-xs font-bold text-gray-700">Leave a Review</p>
+              <div className="flex items-center gap-1">
+                {[1,2,3,4,5].map((star) => (
+                  <button key={star} onClick={() => setRating(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-transform hover:scale-110">
+                    <svg className={`w-6 h-6 transition-colors ${star <= (hoverRating || rating) ? 'text-amber-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  </button>
+                ))}
+                {rating > 0 && <span className="ml-1 text-xs font-semibold text-amber-700">{['','Poor','Fair','Good','Very Good','Excellent'][rating]}</span>}
+              </div>
+              <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Share your experience (optional)…" rows={2} className="w-full text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 resize-none outline-none focus:ring-2 focus:ring-emerald-300 placeholder-gray-400" />
+              {reviewError && <p className="text-xs text-red-600 font-medium">{reviewError}</p>}
+              <button onClick={handleSubmitReview} disabled={reviewBusy || !rating} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors disabled:opacity-40">
+                {reviewBusy ? 'Submitting…' : 'Submit Review'}
+              </button>
+            </div>
+          )}
+          {reviewDone && (
+            <p className="text-xs text-emerald-700 font-semibold flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+              Review submitted. Thank you!
+            </p>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <>
+        {showCancelModal && (
+          <CancellationReasonModal
+            role={isSeller ? 'seller' : 'buyer'}
+            onConfirm={async (reason) => {
+              await onCancelTransaction(reason)
+              setShowCancelModal(false)
+            }}
+            onClose={() => setShowCancelModal(false)}
+            busy={actionBusy}
+          />
+        )}
+        <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 space-y-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Sold
+            </span>
+            {/* Seller sees buyer name; buyer sees a neutral label — never shows "Buyer: <name>" to the buyer */}
+            {transaction?.buyer && isSeller && (
+              <span className="text-xs text-amber-700 font-medium">
+                Buyer: <span className="font-bold">{buyerParticipant?.name || 'Buyer'}</span>
+              </span>
+            )}
+            {transaction?.buyer && !isSeller && (
+              <span className="text-xs text-amber-700 font-medium">You are the selected buyer</span>
+            )}
+            <span className="text-xs text-amber-600 font-medium">· Waiting for confirmations</span>
+          </div>
+          {isParticipant && (
+            myConfirmed || txConfirmed ? (
+              <p className="text-xs text-amber-800 font-semibold flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                Your confirmation recorded — waiting for the other party.
+              </p>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => { try { await onConfirmTransaction(); setTxConfirmed(true) } catch {} }}
+                  disabled={actionBusy}
+                  className="flex-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {actionBusy ? 'Working…' : 'Confirm Completed'}
+                </button>
+                <button
+                  onClick={() => setShowCancelModal(true)}
+                  disabled={actionBusy}
+                  className="flex-1 text-xs font-semibold text-gray-600 hover:text-red-700 hover:bg-red-50 border border-gray-200 hover:border-red-300 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel Transaction
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      </>
+    )
+  }
+
+  return null
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function ChatDashboard() {
@@ -175,9 +567,15 @@ export default function ChatDashboard() {
   const [activeChatId, setActiveChatId]   = useState(null)
 
   // Active chat
-  const [activeMessages, setActiveMessages] = useState([])
-  const [loadingChat, setLoadingChat]       = useState(false)
-  const [inputText, setInputText]           = useState('')
+  const [activeMessages, setActiveMessages]       = useState([])
+  const [loadingChat, setLoadingChat]             = useState(false)
+  const [inputText, setInputText]                 = useState('')
+
+  // Transaction controls for the active conversation
+  const [activeListingStatus, setActiveListingStatus] = useState('active')
+  const [activeTransaction,   setActiveTransaction]   = useState(null)
+  const [showSoldModal,       setShowSoldModal]       = useState(false)
+  const [actionBusy,          setActionBusy]          = useState(false)
 
   // Message action menu
   const [hoveredMsgId, setHoveredMsgId] = useState(null)
@@ -186,6 +584,13 @@ export default function ChatDashboard() {
   const bottomRef       = useRef(null)
   const inputRef        = useRef(null)
   const activeChatIdRef = useRef(null)
+  // Stable ref so socket callbacks always see the current activeId without
+  // needing to be recreated (avoids stale-closure wrong-chat placement).
+  const activeIdRef     = useRef(null)
+
+  // Keep stable ref in sync so socket callbacks can read the current value
+  // without the effect needing to be recreated on every activeId change.
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
   // ── Load conversation list ─────────────────────────────────────────────
   useEffect(() => {
@@ -244,29 +649,48 @@ export default function ChatDashboard() {
   }, [activeMessages.length])
 
   // ── Socket: join room + receive messages + deletions ───────────────────
+  // IMPORTANT: loadingChat is intentionally NOT in the dependency array.
+  // Including it caused a leave→rejoin cycle on every conversation open,
+  // creating a window where a message from the old room could arrive after
+  // the new onReceive was registered but before the server leave was processed,
+  // placing the wrong-chat message into activeMessages (the reported bug).
   useEffect(() => {
-    if (!activeId || loadingChat) return
+    if (!activeId) return
     const socket = getSocket()
     if (!socket.connected) socket.connect()
     socket.emit('join_chat', { listingId: activeId })
 
     const onReceive = (message) => {
       if (!message?.id || !message?.text?.trim()) return
+
+      // Guard: discard messages that belong to a different chat.
+      // This handles the race between leave_chat (async network) and the
+      // server still broadcasting to the old room while React has already
+      // switched activeId to the new conversation.
+      const currentId = activeIdRef.current
+      if (message.listingId && message.listingId !== currentId) return
+
       setActiveMessages((prev) => dedup([...prev, message]))
+
+      // Use message.listingId (server-stamped) instead of the closed-over
+      // activeId to correctly update the sidebar preview for the sender's
+      // conversation, not the currently open one.
       setConversations((prev) =>
         prev.map((c) =>
-          c.listingId === activeId
+          c.listingId === message.listingId
             ? { ...c, lastMessage: { senderId: message.senderId, text: message.text, timestamp: message.timestamp } }
             : c
         )
       )
     }
+
     // Server acks sender's message with real DB id — replace temp id in state
     const onSent = ({ tempId, realId, timestamp }) => {
       setActiveMessages((prev) =>
         prev.map((m) => m.id === tempId ? { ...m, id: realId, timestamp } : m)
       )
     }
+
     const onDeleted = ({ messageId }) => {
       setActiveMessages((prev) =>
         prev.map((m) =>
@@ -284,9 +708,86 @@ export default function ChatDashboard() {
       socket.off('message_sent',    onSent)
       socket.off('message_deleted', onDeleted)
     }
-  }, [activeId, loadingChat])
+  }, [activeId])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { return () => { getSocket().disconnect() } }, [])
+
+  // ── Transaction actions ───────────────────────────────────────────────────
+
+  const handleTxPause = useCallback(async () => {
+    setActionBusy(true)
+    setShowSoldModal(false)
+    try {
+      await updateListingStatusAPI(activeId, 'paused')
+      setActiveListingStatus('paused')
+      setConversations((prev) => prev.map((c) =>
+        c.listingId === activeId ? { ...c, listing: { ...c.listing, status: 'paused' } } : c
+      ))
+    } catch {} finally { setActionBusy(false) }
+  }, [activeId])
+
+  const handleTxResume = useCallback(async () => {
+    setActionBusy(true)
+    try {
+      await updateListingStatusAPI(activeId, 'active')
+      setActiveListingStatus('active')
+      setConversations((prev) => prev.map((c) =>
+        c.listingId === activeId ? { ...c, listing: { ...c.listing, status: 'active' } } : c
+      ))
+    } catch {} finally { setActionBusy(false) }
+  }, [activeId])
+
+  const handleTxMarkSoldClick = useCallback(() => setShowSoldModal(true), [])
+
+  const handleTxConfirmSold = useCallback(async () => {
+    setActionBusy(true)
+    try {
+      const convo  = conversations.find((c) => c.chatId === activeChatId)
+      const buyer  = convo?.participants?.find((p) => p._id !== String(user?._id))
+      const result = await updateListingStatusAPI(activeId, 'sold', buyer?._id)
+      const tx     = result.listing?.transaction || null
+      setActiveListingStatus('sold')
+      setActiveTransaction(tx)
+      setConversations((prev) => prev.map((c) =>
+        c.listingId === activeId
+          ? { ...c, listing: { ...c.listing, status: 'sold', transaction: tx } }
+          : c
+      ))
+    } catch {} finally { setActionBusy(false); setShowSoldModal(false) }
+  }, [activeId, conversations, user])
+
+  const handleTxPauseFromModal = useCallback(async () => {
+    setShowSoldModal(false)
+    await handleTxPause()
+  }, [handleTxPause])
+
+  const handleTxConfirmTransaction = useCallback(async () => {
+    setActionBusy(true)
+    try {
+      const result = await confirmTransactionAPI(activeId)
+      const tx = result.listing?.transaction || null
+      setActiveTransaction(result.dealCompleted
+        ? { ...tx, completedAt: new Date().toISOString() }
+        : tx
+      )
+    } finally { setActionBusy(false) }
+  }, [activeId])
+
+  const handleTxCancelTransaction = useCallback(async (reason) => {
+    setActionBusy(true)
+    try {
+      const result = await cancelTransactionAPI(activeId, reason)
+      const tx = result.listing?.transaction || null
+      setActiveTransaction(tx)
+      // Listing moves to paused — seller must explicitly resume
+      setActiveListingStatus('paused')
+      setConversations((prev) => prev.map((c) =>
+        c.listingId === activeId
+          ? { ...c, listing: { ...c.listing, status: 'paused', transaction: tx } }
+          : c
+      ))
+    } catch {} finally { setActionBusy(false) }
+  }, [activeId])
 
   // ── Send ───────────────────────────────────────────────────────────────
   const handleSend = useCallback(() => {
@@ -353,18 +854,48 @@ export default function ChatDashboard() {
   const sellingConvos = conversations.filter((c) => c.sellerId === String(user?._id))
   const tabConvos     = activeTab === 'buying' ? buyingConvos : sellingConvos
 
-  // Active chat derived data — listing is embedded in conversation, no extra fetch
-  const activeConvo      = conversations.find((c) => c.listingId === activeId)
+  // Active chat derived data — keyed by chatId, not listingId.
+  // Two buyers for the same listing share a listingId; only chatId is unique.
+  const activeConvo      = conversations.find((c) => c.chatId === activeChatId)
   const activeListing    = activeConvo?.listing || null
   const otherParticipant = activeConvo?.participants?.find((p) => p._id !== String(user?._id))
   const otherName        = otherParticipant?.name || 'User'
 
+  // isSeller: the current user owns this listing
+  const isSeller = activeConvo?.sellerId === String(user?._id)
+
+  // Resolve buyer from transaction.buyer ID, not "other participant".
+  // otherParticipant is the SELLER when the buyer views — using it directly
+  // would show the wrong name. Match by transaction.buyer ID instead.
+  const txBuyerStr       = activeTransaction?.buyer ? String(activeTransaction.buyer) : null
+  const participantMatch = txBuyerStr
+    ? activeConvo?.participants?.find((p) => p._id === txBuyerStr)
+    : null
+  const txBuyerParticipant = participantMatch ?? otherParticipant
+
+  // Pass sellerId through to the panel so it can compute participant identity
+  const listingForPanel = activeListing
+    ? { ...activeListing, sellerId: activeConvo?.sellerId || '' }
+    : null
+
   const grouped    = buildGroups(activeMessages)
   const canSend    = inputText.trim().length > 0
   const listingImg = activeListing?.images?.[0] ?? defaultImage
-  const isSold     = activeListing?.status === 'sold'
+  const isSold     = activeListingStatus === 'sold'
 
   return (
+    <>
+    {showSoldModal && (
+      <MarkSoldModal
+        listing={activeListing}
+        buyer={txBuyerParticipant}
+        listingStatus={activeListingStatus}
+        onConfirm={handleTxConfirmSold}
+        onPause={handleTxPauseFromModal}
+        onCancel={() => setShowSoldModal(false)}
+        busy={actionBusy}
+      />
+    )}
     <div
       className="flex h-[calc(100vh-4rem)] bg-white overflow-hidden"
       onClick={() => setMenuMsgId(null)}
@@ -442,18 +973,20 @@ export default function ChatDashboard() {
 
           {!loadingConvos && tabConvos.map((convo) => {
             const unread    = isUnread(convo)
-            const isActive  = activeId === convo.listingId
+            const isActive  = activeChatId === convo.chatId
             // Always show the OTHER participant's name and role label
             const other     = convo.participants?.find((p) => p._id !== String(user?._id))
             const otherLabel= activeTab === 'buying' ? 'Seller' : 'Buyer'
 
             return (
               <button
-                key={convo.listingId}
+                key={convo.chatId}
                 onClick={() => {
                   setActiveId(convo.listingId)
                   setActiveChatId(convo.chatId)
                   activeChatIdRef.current = convo.chatId
+                  setActiveListingStatus(convo.listing?.status || 'active')
+                  setActiveTransaction(convo.listing?.transaction || null)
                 }}
                 className={`
                   w-full flex items-center gap-3 px-4 py-3.5 text-left
@@ -587,21 +1120,21 @@ export default function ChatDashboard() {
               </div>
             </div>
 
-            {/* Sold banner */}
-            {isSold && (
-              <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3">
-                <div className="max-w-3xl mx-auto flex items-start gap-3">
-                  <span className="text-amber-500 flex-shrink-0 mt-0.5 text-base">⚠</span>
-                  <div>
-                    <p className="text-sm font-bold text-amber-800 leading-tight mb-0.5">Listing Sold</p>
-                    <p className="text-xs text-amber-700 leading-relaxed">
-                      This item has been marked as sold. You may continue messaging to complete the transaction.
-                      New buyers can no longer contact the seller about this listing.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Transaction / listing status panel */}
+            <DashboardTransactionPanel
+              listingId={activeId}
+              listing={listingForPanel}
+              listingStatus={activeListingStatus}
+              transaction={activeTransaction}
+              buyerParticipant={txBuyerParticipant}
+              currentUserId={user?._id}
+              onMarkSold={handleTxMarkSoldClick}
+              onPause={handleTxPause}
+              onResume={handleTxResume}
+              onConfirmTransaction={handleTxConfirmTransaction}
+              onCancelTransaction={handleTxCancelTransaction}
+              actionBusy={actionBusy}
+            />
 
             {/* Messages area */}
             <div className="flex-1 overflow-y-auto bg-gray-50/60">
@@ -783,5 +1316,6 @@ export default function ChatDashboard() {
         )}
       </main>
     </div>
+    </>
   )
 }

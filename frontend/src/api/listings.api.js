@@ -27,9 +27,27 @@ export const getMyListingsAPI = async () => {
 }
 
 // PATCH /api/listings/:id/status  (requires auth)
-export const updateListingStatusAPI = async (id, status) => {
-  const response = await api.patch(`/listings/${id}/status`, { status })
+export const updateListingStatusAPI = async (id, status, buyerId = null) => {
+  const response = await api.patch(`/listings/${id}/status`, { status, buyerId })
   return response.data
+}
+
+// GET /api/listings/:id/chat-participants  (requires auth, owner only)
+export const getChatParticipantsAPI = async (id) => {
+  const res = await api.get(`/listings/${id}/chat-participants`)
+  return res.data
+}
+
+// PATCH /api/listings/:id/transaction/confirm  (requires auth)
+export const confirmTransactionAPI = async (id) => {
+  const res = await api.patch(`/listings/${id}/transaction/confirm`)
+  return res.data
+}
+
+// PATCH /api/listings/:id/transaction/cancel  (requires auth)
+export const cancelTransactionAPI = async (id, reason = '') => {
+  const res = await api.patch(`/listings/${id}/transaction/cancel`, { reason })
+  return res.data
 }
 
 // POST /api/listings  — sends multipart/form-data so multer can parse files

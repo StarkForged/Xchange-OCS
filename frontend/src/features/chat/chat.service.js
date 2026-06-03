@@ -18,11 +18,12 @@ export const getConversations = async () => {
     listingId: String(chat.listing?._id || chat.listing),
     sellerId:  String(chat.listing?.seller || ''),
     listing: {
-      _id:    String(chat.listing?._id || chat.listing),
-      title:  chat.listing?.title  || '',
-      images: chat.listing?.images || [],
-      price:  chat.listing?.price  || null,
-      status: chat.listing?.status || 'active',
+      _id:         String(chat.listing?._id || chat.listing),
+      title:       chat.listing?.title       || '',
+      images:      chat.listing?.images      || [],
+      price:       chat.listing?.price       || null,
+      status:      chat.listing?.status      || 'active',
+      transaction: chat.listing?.transaction || null,
     },
     participants: (chat.participants || []).map((p) => ({
       _id:  String(p._id),

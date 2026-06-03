@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getListingById } from '../../features/listings/listings.service'
 import SellerReputationCard from '../../components/trust/SellerReputationCard'
 import GhostSellerWarning from '../../components/trust/GhostSellerWarning'
 import SimilarListings from '../../components/listings/SimilarListings'
 import { trackViewAPI } from '../../api/intelligence.api'
+import { confirmTransactionAPI } from '../../api/listings.api'
+import { createReviewAPI } from '../../api/review.api'
 import useAuthStore from '../../store/auth.Store'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import defaultImage from '../../assets/images/products/iphone13.jpg'
@@ -45,16 +47,177 @@ function activityDot(lastActiveAt) {
   return 'bg-gray-300'
 }
 
+// ── Transaction Confirmation Banner ─────────────────────────────────────────
+
+function TransactionBanner({ listingId, transaction, currentUserId, sellerId, onConfirmed }) {
+  const [busy, setBusy]           = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+
+  if (!transaction?.buyer) return null
+  if (transaction.completedAt) return null
+
+  const buyerStr  = String(transaction.buyer)
+  const sellerStr = String(sellerId)
+  const meStr     = String(currentUserId)
+
+  // Only show to participants
+  if (meStr !== buyerStr && meStr !== sellerStr) return null
+
+  const myConfirmed = meStr === sellerStr ? transaction.sellerConfirmed : transaction.buyerConfirmed
+  if (myConfirmed || confirmed) {
+    return (
+      <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+        <svg className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <p className="text-sm font-bold text-emerald-800">Your confirmation is recorded</p>
+          <p className="text-xs text-emerald-700 mt-0.5">
+            Waiting for the other party to confirm. Once both sides confirm, the deal is complete and reviews unlock.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const handleConfirm = async () => {
+    setBusy(true)
+    try {
+      const result = await confirmTransactionAPI(listingId)
+      setConfirmed(true)
+      if (result.dealCompleted) onConfirmed?.()
+    } catch {
+      // silent
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
+      <div className="flex items-start gap-3">
+        <svg className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <p className="text-sm font-bold text-indigo-800">Confirm Transaction Completed</p>
+          <p className="text-xs text-indigo-700 mt-0.5 leading-relaxed">
+            Did the exchange go smoothly? Both parties must confirm to complete the deal and unlock reviews.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={handleConfirm}
+        disabled={busy}
+        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors disabled:opacity-50"
+      >
+        {busy ? 'Confirming…' : 'Confirm Transaction Completed'}
+      </button>
+    </div>
+  )
+}
+
+// ── Leave Review Form ─────────────────────────────────────────────────────────
+
+function LeaveReviewForm({ listingId, revieweeId, onSubmitted }) {
+  const [rating,  setRating]  = useState(0)
+  const [hover,   setHover]   = useState(0)
+  const [comment, setComment] = useState('')
+  const [busy,    setBusy]    = useState(false)
+  const [done,    setDone]    = useState(false)
+  const [error,   setError]   = useState('')
+
+  const handleSubmit = async () => {
+    if (!rating) { setError('Please select a rating'); return }
+    setBusy(true)
+    setError('')
+    try {
+      await createReviewAPI({ listingId, rating, comment })
+      setDone(true)
+      onSubmitted?.()
+    } catch (e) {
+      setError(e?.response?.data?.message || 'Failed to submit review')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+        <svg className="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-sm font-bold text-emerald-800">Review submitted. Thank you!</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-4">
+      <div>
+        <p className="text-sm font-bold text-amber-800">Leave a Review</p>
+        <p className="text-xs text-amber-700 mt-0.5">Share your experience with this transaction.</p>
+      </div>
+
+      {/* Star picker */}
+      <div className="flex items-center gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            onClick={() => setRating(star)}
+            onMouseEnter={() => setHover(star)}
+            onMouseLeave={() => setHover(0)}
+            className="transition-transform hover:scale-110"
+          >
+            <svg
+              className={`w-7 h-7 transition-colors ${star <= (hover || rating) ? 'text-amber-400' : 'text-gray-300'}`}
+              fill="currentColor" viewBox="0 0 20 20"
+            >
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            </svg>
+          </button>
+        ))}
+        {rating > 0 && (
+          <span className="ml-2 text-sm font-semibold text-amber-800">
+            {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
+          </span>
+        )}
+      </div>
+
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Share your experience (optional)…"
+        rows={3}
+        maxLength={1000}
+        className="w-full text-sm text-gray-700 bg-white border border-amber-200 rounded-xl px-4 py-3 resize-none outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-400"
+      />
+
+      {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+
+      <button
+        onClick={handleSubmit}
+        disabled={busy || !rating}
+        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {busy ? 'Submitting…' : 'Submit Review'}
+      </button>
+    </div>
+  )
+}
+
 export default function ListingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user: currentUser } = useAuthStore()
 
-  const [listing, setListing]     = useState(null)
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState(null)
+  const [listing, setListing]         = useState(null)
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
   const [activeImage, setActiveImage] = useState(0)
-  const [saved, setSaved]         = useState(false)
+  const [saved, setSaved]             = useState(false)
+  const [dealDone, setDealDone]       = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -115,7 +278,7 @@ export default function ListingDetailPage() {
   const {
     title, description, price, category,
     images, seller, location, status,
-    viewsCount, favoritesCount, attributes, createdAt,
+    viewsCount, favoritesCount, attributes, createdAt, transaction,
   } = listing
 
   const displayImages  = images?.length > 0 ? images : [defaultImage]
@@ -130,6 +293,14 @@ export default function ListingDetailPage() {
   const trustColor     = trustTierColor(sellerObj?.trustScore ?? 0)
   const dotColor       = activityDot(sellerObj?.sellerMetrics?.lastActiveAt)
   const isGhost        = sellerObj?.ghostRisk?.flagged
+
+  // Transaction participation checks
+  const meStr      = currentUser ? String(currentUser._id) : null
+  const sellerStr  = sellerObj ? String(sellerObj._id) : null
+  const buyerStr   = transaction?.buyer ? String(transaction.buyer) : null
+  const isParticipant = meStr && (meStr === sellerStr || meStr === buyerStr)
+  const dealCompleted = !!(transaction?.completedAt || dealDone)
+  const canReview = dealCompleted && isParticipant
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-gray-50 to-gray-100">
@@ -351,6 +522,27 @@ export default function ListingDetailPage() {
 
             <div className="border-t border-gray-100" />
 
+            {/* Transaction confirmation + review form (for participants) */}
+            {isSold && isAuthenticated && isParticipant && (
+              <div className="space-y-3">
+                {!dealCompleted && (
+                  <TransactionBanner
+                    listingId={id}
+                    transaction={transaction}
+                    currentUserId={meStr}
+                    sellerId={sellerStr}
+                    onConfirmed={() => setDealDone(true)}
+                  />
+                )}
+                {canReview && (
+                  <LeaveReviewForm
+                    listingId={id}
+                    revieweeId={meStr === sellerStr ? buyerStr : sellerStr}
+                  />
+                )}
+              </div>
+            )}
+
             {/* Seller mini-card inside sticky panel */}
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -363,9 +555,19 @@ export default function ListingDetailPage() {
                   <span className={`absolute bottom-0 right-0 w-3 h-3 ${dotColor} border-2 border-white rounded-full`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-800 leading-tight truncate">
-                    {formatSellerName(seller)}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-gray-800 leading-tight truncate flex-1">
+                      {formatSellerName(seller)}
+                    </p>
+                    {sellerObj?._id && (
+                      <Link
+                        to={`/users/${sellerObj._id}`}
+                        className="flex-shrink-0 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-full transition-colors"
+                      >
+                        Profile
+                      </Link>
+                    )}
+                  </div>
                   {/* Trust score mini bar */}
                   {sellerObj?.trustScore != null && (
                     <div className="flex items-center gap-2 mt-1">

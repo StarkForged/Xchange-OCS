@@ -12,19 +12,33 @@ exports.getOrCreateChat = async (req, res, next) => {
     const listing = await Listing.findById(listingId).lean()
     if (!listing) throw new ApiError(404, 'Listing not found')
 
-    if (listing.status === 'sold') {
-      throw new ApiError(400, 'This item is no longer available')
-    }
-
     const sellerId = String(listing.seller)
     const buyerId  = String(req.user._id)
 
+    // If the seller opens their own listing's chat (e.g. via notification link),
+    // find the most recent conversation they participate in for this listing.
     if (sellerId === buyerId) {
-      throw new ApiError(400, 'You cannot chat with yourself on your own listing')
+      const sellerChat = await Chat.findOne({ listing: listingId, participants: req.user._id })
+        .sort({ updatedAt: -1 })
+        .populate('participants', 'name _id')
+      if (sellerChat) return res.json({ chat: sellerChat })
+      throw new ApiError(400, 'No buyer conversations found for this listing')
     }
 
     // Stable key: listingId + sorted participant IDs — order-independent
     const chatKey = String(listingId) + ':' + [buyerId, sellerId].sort().join(':')
+
+    // Existing participants can always re-open their chat regardless of listing status.
+    // Only block NEW chat creation for sold/paused listings.
+    const existing = await Chat.findOne({ chatKey }).populate('participants', 'name _id')
+    if (existing) return res.json({ chat: existing })
+
+    if (listing.status === 'sold') {
+      throw new ApiError(400, 'This item is no longer available')
+    }
+    if (listing.status === 'paused') {
+      throw new ApiError(400, 'This listing is currently paused')
+    }
 
     // Atomic: find-or-create in one round trip using the unique chatKey
     const chat = await Chat.findOneAndUpdate(
@@ -43,7 +57,7 @@ exports.getOrCreateChat = async (req, res, next) => {
 exports.getChats = async (req, res, next) => {
   try {
     const chats = await Chat.find({ participants: req.user._id })
-      .populate('listing', 'title images price seller status')
+      .populate('listing', 'title images price seller status transaction')
       .populate('participants', 'name _id')
       .sort({ updatedAt: -1 })
       .lean()

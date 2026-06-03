@@ -225,6 +225,34 @@ function ReputationSection({ user }) {
           </p>
           <p className="text-xs text-gray-400 mt-1">received</p>
         </div>
+
+        {/* Reviews tile */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Reviews</p>
+          {(user?.reviewStats?.reviewCount ?? 0) > 0 ? (
+            <>
+              <p className="text-3xl font-black text-amber-500 leading-none">
+                {user.reviewStats.averageRating}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">avg · {user.reviewStats.reviewCount} total</p>
+            </>
+          ) : (
+            <>
+              <p className="text-3xl font-black text-gray-300 leading-none">—</p>
+              <p className="text-xs text-gray-400 mt-1">no reviews</p>
+            </>
+          )}
+        </div>
+
+        {/* Completed Deals tile */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Deals</p>
+          <p className="text-3xl font-black text-emerald-600 leading-none">
+            {user?.reviewStats?.completedDeals ?? 0}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">completed</p>
+        </div>
+
       </div>
 
       {/* Badge strip */}
@@ -406,6 +434,17 @@ export default function DashboardOverview() {
             icon={
               <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            }
+          />
+          <QuickActionCard
+            to="/dashboard/reviews"
+            label="My Reviews"
+            description={`${user?.reviewStats?.reviewCount ?? 0} review${(user?.reviewStats?.reviewCount ?? 0) !== 1 ? 's' : ''} received`}
+            accent="bg-amber-50 text-amber-600"
+            icon={
+              <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
               </svg>
             }
           />

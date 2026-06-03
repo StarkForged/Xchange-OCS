@@ -19,6 +19,7 @@ export const getProfileAPI = async () => {
 }
 
 // PUT /api/users/profile → { user }
+// updates must include { password } for server-side verification.
 export const updateProfileAPI = async (updates) => {
   const { data } = await api.put('/users/profile', updates)
   return data
