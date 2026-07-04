@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute      from './ProtectedRoute'
+import AdminRoute          from './AdminRoute'
 import MainLayout          from '../layouts/MainLayout'
 import DashboardLayout     from '../layouts/DashboardLayout'
 
@@ -21,13 +22,20 @@ import SettingsPage        from '../pages/dashboard/SettingsPage'
 import ReviewsPage         from '../pages/dashboard/ReviewsPage'
 import PublicProfilePage   from '../pages/users/PublicProfilePage'
 
+import AdminLoginPage      from '../pages/admin/AdminLoginPage'
+import AdminLayout         from '../pages/admin/AdminLayout'
+import AdminDashboard      from '../pages/admin/dashboard/AdminDashboard'
+import UsersPage           from '../pages/admin/users/UsersPage'
+import AdminComingSoon     from '../pages/admin/AdminComingSoon'
+
 export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
         {/* Public */}
-        <Route path="/login"    element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/login"       element={<LoginPage />} />
+        <Route path="/register"    element={<RegisterPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
 
         <Route element={<ProtectedRoute />}>
 
@@ -53,6 +61,20 @@ export default function AppRouter() {
             <Route path="/dashboard/reviews"   element={<ReviewsPage />} />
           </Route>
 
+        </Route>
+
+        {/* Admin — separate auth guard, no interference with buyer/seller session */}
+        <Route element={<AdminRoute />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/dashboard"   element={<AdminDashboard />} />
+            <Route path="/admin/users"       element={<UsersPage />} />
+            <Route path="/admin/listings"    element={<AdminComingSoon />} />
+            <Route path="/admin/reviews"     element={<AdminComingSoon />} />
+            <Route path="/admin/reports"     element={<AdminComingSoon />} />
+            <Route path="/admin/categories"  element={<AdminComingSoon />} />
+            <Route path="/admin/settings"    element={<AdminComingSoon />} />
+            <Route path="/admin"             element={<Navigate to="/admin/dashboard" replace />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

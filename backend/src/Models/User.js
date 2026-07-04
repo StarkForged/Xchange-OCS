@@ -28,6 +28,15 @@ const userSchema = new mongoose.Schema(
       enum: ['buyer', 'seller', 'admin'],
       default: 'buyer',
     },
+    accountStatus: {
+      type: String,
+      enum: ['active', 'suspended', 'banned'],
+      default: 'active',
+    },
+    isVerifiedSeller: {
+      type: Boolean,
+      default: false,
+    },
     profileImage: {
       type: String,
       default: '',

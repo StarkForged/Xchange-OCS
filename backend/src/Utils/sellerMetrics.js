@@ -29,10 +29,9 @@ const BADGE_DEFS = [
   {
     id:          'verified_seller',
     label:       'Verified Seller',
-    description: 'Profile 70%+ complete with a trust score of 60+',
+    description: 'Manually verified by the platform administrator',
     icon:        'verified_seller',
-    check: (u, _m, _lc, _ad, profileCompletion) =>
-      u.trustScore >= 60 && profileCompletion >= 70,
+    check: (u) => !!u.isVerifiedSeller,
   },
   {
     id:          'active_seller',

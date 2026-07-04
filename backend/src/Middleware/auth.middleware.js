@@ -22,6 +22,13 @@ exports.protect = async (req, res, next) => {
       throw new ApiError(401, 'Not authorized, user not found')
     }
 
+    if (user.accountStatus === 'suspended') {
+      throw new ApiError(403, 'Your account has been suspended. Contact support.')
+    }
+    if (user.accountStatus === 'banned') {
+      throw new ApiError(403, 'Your account has been banned.')
+    }
+
     req.user = user
     next()
   } catch (err) {
@@ -31,3 +38,11 @@ exports.protect = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return next(new ApiError(403, 'Admin access required'))
+  }
+  next()
+}
+

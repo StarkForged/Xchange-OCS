@@ -30,7 +30,7 @@ exports.registerUser = async (req, res, next) => {
       name,
       email,
       password,
-      role: role || 'buyer',
+      role: role === 'admin' ? 'buyer' : (role || 'buyer'),
     })
 
     const token = generateToken(user._id)
@@ -57,6 +57,10 @@ exports.loginUser = async (req, res, next) => {
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password')
     if (!user) {
       throw new ApiError(401, 'Invalid email or password')
+    }
+
+    if (user.role === 'admin') {
+      throw new ApiError(403, 'Please use the Admin Portal.')
     }
 
     const isMatch = await user.matchPassword(password)

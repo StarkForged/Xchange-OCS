@@ -314,7 +314,7 @@ function CancellationReasonModal({ role, onConfirm, onClose, busy }) {
 
 function DashboardTransactionPanel({
   listingId, listing, listingStatus, transaction,
-  buyerParticipant, currentUserId,
+  buyerParticipant, currentUserId, txBuyerInChat,
   onMarkSold, onPause, onResume, onConfirmTransaction, onCancelTransaction,
   actionBusy,
 }) {
@@ -339,7 +339,9 @@ function DashboardTransactionPanel({
 
   const isSeller        = meStr !== '' && meStr === sellerStr
   const isSelectedBuyer = buyerStr !== '' && meStr === buyerStr
-  const isParticipant   = isSeller || isSelectedBuyer
+  // Seller is only a transaction participant in the chat that belongs to the selected buyer.
+  // txBuyerInChat (passed from ChatDashboard) is false when viewing an unrelated buyer's chat.
+  const isParticipant   = (isSeller && txBuyerInChat) || isSelectedBuyer
 
   const myConfirmed   = isSeller ? transaction?.sellerConfirmed : transaction?.buyerConfirmed
   const dealCompleted = !!(transaction?.completedAt)
@@ -451,6 +453,22 @@ function DashboardTransactionPanel({
   // ── SOLD ──────────────────────────────────────────────────────────────────
   if (listingStatus === 'sold') {
 
+    // Non-participant viewing a sold listing: neutral banner, no transaction controls.
+    // isParticipant = (isSeller && txBuyerInChat) || isSelectedBuyer ensures only the
+    // actual transaction parties see transaction UI.
+    if (!isParticipant) {
+      return (
+        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs text-gray-500 font-medium">This listing has been sold to another buyer.</span>
+          </div>
+        </div>
+      )
+    }
+
     if (dealCompleted) {
       return (
         <div className="flex-shrink-0 bg-emerald-50 border-b border-emerald-200 px-4 py-3 space-y-3">
@@ -509,13 +527,13 @@ function DashboardTransactionPanel({
             <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Sold
             </span>
-            {/* Seller sees buyer name; buyer sees a neutral label — never shows "Buyer: <name>" to the buyer */}
+            {/* Seller sees buyer name; only the selected buyer sees the confirmation label */}
             {transaction?.buyer && isSeller && (
               <span className="text-xs text-amber-700 font-medium">
                 Buyer: <span className="font-bold">{buyerParticipant?.name || 'Buyer'}</span>
               </span>
             )}
-            {transaction?.buyer && !isSeller && (
+            {transaction?.buyer && isSelectedBuyer && (
               <span className="text-xs text-amber-700 font-medium">You are the selected buyer</span>
             )}
             <span className="text-xs text-amber-600 font-medium">· Waiting for confirmations</span>
@@ -873,6 +891,10 @@ export default function ChatDashboard() {
     : null
   const txBuyerParticipant = participantMatch ?? otherParticipant
 
+  // True when the transaction buyer is a participant in THIS specific chat (or no buyer is set yet).
+  // Gates all transaction controls: seller only sees them in Buyer A's chat, not Buyer B's/C's.
+  const isCurrentChatTransactionChat = txBuyerStr === null || participantMatch !== null
+
   // Pass sellerId through to the panel so it can compute participant identity
   const listingForPanel = activeListing
     ? { ...activeListing, sellerId: activeConvo?.sellerId || '' }
@@ -1128,6 +1150,7 @@ export default function ChatDashboard() {
               transaction={activeTransaction}
               buyerParticipant={txBuyerParticipant}
               currentUserId={user?._id}
+              txBuyerInChat={isCurrentChatTransactionChat}
               onMarkSold={handleTxMarkSoldClick}
               onPause={handleTxPause}
               onResume={handleTxResume}

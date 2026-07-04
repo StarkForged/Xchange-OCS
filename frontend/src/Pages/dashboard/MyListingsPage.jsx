@@ -222,11 +222,24 @@ function TransactionStatus({ listing }) {
   const tx = listing.transaction
   if (!tx?.buyer) return null
 
+  const buyerName = tx.buyer?.name || null
+
   if (tx.completedAt) {
+    const completedDate = new Date(tx.completedAt).toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    })
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-        Deal Complete
-      </span>
+      <div className="flex flex-col gap-0.5">
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
+          Deal Complete
+        </span>
+        {buyerName && (
+          <span className="text-[10px] text-gray-500">
+            Sold to: <span className="font-semibold text-gray-700">{buyerName}</span>
+          </span>
+        )}
+        <span className="text-[10px] text-gray-400">Completed {completedDate}</span>
+      </div>
     )
   }
 
@@ -240,9 +253,16 @@ function TransactionStatus({ listing }) {
     : 'Confirming…'
 
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-      {label}
-    </span>
+    <div className="flex flex-col gap-0.5">
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 w-fit">
+        {label}
+      </span>
+      {buyerName && (
+        <span className="text-[10px] text-gray-500">
+          Sold to: <span className="font-semibold text-gray-700">{buyerName}</span>
+        </span>
+      )}
+    </div>
   )
 }
 

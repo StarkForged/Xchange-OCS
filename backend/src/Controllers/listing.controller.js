@@ -111,6 +111,7 @@ exports.getListingById = async (req, res, next) => {
 exports.getMyListings = async (req, res, next) => {
   try {
     const listings = await Listing.find({ seller: req.user._id })
+      .populate('transaction.buyer', 'name profileImage')
       .sort({ createdAt: -1 })
       .lean()
     res.json({ listings })
