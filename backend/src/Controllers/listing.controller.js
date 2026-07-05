@@ -3,8 +3,11 @@ const mongoose   = require('mongoose')
 const Listing    = require('../Models/Listing')
 const User       = require('../Models/User')
 const Chat       = require('../Models/Chat')
+const Report     = require('../Models/Report')
+const ModerationLog = require('../Models/ModerationLog')
 const ApiError   = require('../Utils/ApiError')
 const cloudinary = require('../Config/cloudinary')
+const { getRequiredFields } = require('../Config/categoryFields')
 
 // ── Trust-aware quality score (0–100) ─────────────────────────────────────────
 // Used for the "Best Match" sort and the recommended endpoint.
@@ -47,7 +50,7 @@ exports.getListings = async (req, res, next) => {
       sortBy   = 'latest',
     } = req.query
 
-    const query = { status: 'active' }
+    const query = { status: 'active', isHidden: { $ne: true } }
 
     if (category && category !== 'all') {
       query['category.id'] = category
@@ -92,12 +95,20 @@ exports.getListings = async (req, res, next) => {
 }
 
 // GET /api/listings/:id
+// Route uses attachUserIfPresent (optional auth) so anonymous browsing still
+// works, while the owner/an admin can still open a hidden/removed listing.
 exports.getListingById = async (req, res, next) => {
   try {
     const listing = await Listing.findById(req.params.id)
       .populate('seller', 'name profileImage createdAt trustScore profileCompletion badges sellerMetrics ghostRisk')
       .lean()
     if (!listing) throw new ApiError(404, 'Listing not found')
+
+    const isOwner = req.user && String(listing.seller?._id ?? listing.seller) === String(req.user._id)
+    const isAdmin = req.user?.role === 'admin'
+    if ((listing.isHidden || listing.status === 'removed') && !isOwner && !isAdmin) {
+      throw new ApiError(404, 'Listing not found')
+    }
 
     Listing.findByIdAndUpdate(req.params.id, { $inc: { viewsCount: 1 } }).exec()
 
@@ -132,17 +143,33 @@ exports.createListing = async (req, res, next) => {
     const location   = parse(req.body.location)   || {}
     const attributes = parse(req.body.attributes) || {}
 
-    if (!title || !category?.id || !category?.name || price?.amount == null) {
-      throw new ApiError(400, 'title, category (id + name), and price.amount are required')
+    const missing = []
+    if (!title?.trim())                        missing.push('title')
+    if (!description?.trim())                  missing.push('description')
+    if (!category?.id || !category?.name)      missing.push('category')
+    if (price?.amount == null || isNaN(price.amount) || Number(price.amount) <= 0)
+      missing.push('price')
+    if (!location?.city?.trim() || !location?.state?.trim())
+      missing.push('location')
+
+    // Required dynamic fields come from the category config — not hardcoded per category.
+    for (const fieldName of getRequiredFields(category?.id)) {
+      const val = attributes?.[fieldName]
+      if (val === undefined || val === null || !String(val).trim()) {
+        missing.push(fieldName)
+      }
+    }
+
+    if (!req.files || req.files.length === 0)  missing.push('images')
+
+    if (missing.length > 0) {
+      throw new ApiError(400, `The following fields are required: ${missing.join(', ')}`)
     }
 
     // Upload each image buffer to Cloudinary in parallel
-    let imageUrls = []
-    if (req.files?.length > 0) {
-      imageUrls = await Promise.all(
-        req.files.map((file) => uploadToCloudinary(file.buffer))
-      )
-    }
+    const imageUrls = await Promise.all(
+      req.files.map((file) => uploadToCloudinary(file.buffer))
+    )
 
     const listing = await Listing.create({
       title,
@@ -156,6 +183,8 @@ exports.createListing = async (req, res, next) => {
       attributes,
       status,
     })
+
+    ModerationLog.create({ listing: listing._id, action: 'created', by: req.user._id }).catch(() => {})
 
     res.status(201).json({ listing })
   } catch (err) {
@@ -183,6 +212,7 @@ exports.getSimilarListings = async (req, res, next) => {
       _id:           { $ne: source._id },
       'category.id': catId,
       status:        'active',
+      isHidden:      { $ne: true },
       ...priceFilter,
     })
       .sort({ createdAt: -1 })
@@ -197,6 +227,7 @@ exports.getSimilarListings = async (req, res, next) => {
         _id:           { $nin: exclude },
         'category.id': catId,
         status:        'active',
+        isHidden:      { $ne: true },
       })
         .sort({ createdAt: -1 })
         .limit(4 - similar.length)
@@ -229,6 +260,13 @@ exports.updateListingStatus = async (req, res, next) => {
 
     if (String(listing.seller) !== String(req.user._id)) {
       throw new ApiError(403, 'Only the listing owner can update status')
+    }
+
+    // Admin moderation always overrides seller controls — a listing under
+    // review or removed cannot be paused/resumed/marked sold by its seller,
+    // regardless of what its underlying status field says.
+    if (listing.isHidden || listing.status === 'removed') {
+      throw new ApiError(403, 'This listing is under administrator moderation and cannot be modified.')
     }
 
     const allowed = ALLOWED_TRANSITIONS[listing.status] ?? []
@@ -376,6 +414,11 @@ exports.cancelTransaction = async (req, res, next) => {
       throw new ApiError(400, 'Transaction is already cancelled')
     }
 
+    // Admin moderation always overrides seller/buyer controls.
+    if (listing.isHidden || listing.status === 'removed') {
+      throw new ApiError(403, 'This listing is under administrator moderation and cannot be modified.')
+    }
+
     const meStr     = String(req.user._id)
     const sellerStr = String(listing.seller)
     const buyerStr  = String(listing.transaction.buyer)
@@ -447,6 +490,7 @@ exports.getRecommended = async (req, res, next) => {
         _id:           { $nin: excludeIds },
         'category.id': { $in: [...catIds] },
         status:        'active',
+        isHidden:      { $ne: true },
       })
         .sort({ createdAt: -1 })
         .limit(24)
@@ -460,9 +504,10 @@ exports.getRecommended = async (req, res, next) => {
       const regex  = new RegExp(searchTerms.join('|'), 'i')
       const termEx = [...excludeIds, ...pool.map((l) => l._id)]
       const byTerm = await Listing.find({
-        _id:    { $nin: termEx },
-        title:  regex,
-        status: 'active',
+        _id:      { $nin: termEx },
+        title:    regex,
+        status:   'active',
+        isHidden: { $ne: true },
       })
         .sort({ createdAt: -1 })
         .limit(8)
@@ -474,7 +519,7 @@ exports.getRecommended = async (req, res, next) => {
     // Top-up with latest listings when pool is thin
     if (pool.length < 8) {
       const topEx = [...excludeIds, ...pool.map((l) => l._id)]
-      const topUp = await Listing.find({ _id: { $nin: topEx }, status: 'active' })
+      const topUp = await Listing.find({ _id: { $nin: topEx }, status: 'active', isHidden: { $ne: true } })
         .sort({ createdAt: -1 })
         .limit(8 - pool.length)
         .populate('seller', SELLER_FIELDS)
@@ -490,6 +535,39 @@ exports.getRecommended = async (req, res, next) => {
       .map(({ _qs, ...l }) => l)
 
     res.json({ listings: ranked })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// POST /api/listings/:id/report  (protected) ──────────────────────────────────
+// Feeds the admin moderation queue — see adminListing.controller.js.
+
+const REPORT_REASONS = ['spam', 'duplicate', 'fraudulent', 'inappropriate', 'misleading', 'counterfeit', 'other']
+
+exports.reportListing = async (req, res, next) => {
+  try {
+    const { reason, comment = '' } = req.body
+    if (!REPORT_REASONS.includes(reason)) {
+      throw new ApiError(400, `reason must be one of: ${REPORT_REASONS.join(', ')}`)
+    }
+
+    const listing = await Listing.findById(req.params.id)
+    if (!listing) throw new ApiError(404, 'Listing not found')
+
+    await Report.create({
+      listing:  listing._id,
+      reporter: req.user._id,
+      reason,
+      comment: String(comment).trim(),
+    })
+
+    listing.reportsCount = (listing.reportsCount ?? 0) + 1
+    await listing.save()
+
+    ModerationLog.create({ listing: listing._id, action: 'reported', by: req.user._id, reason }).catch(() => {})
+
+    res.status(201).json({ message: 'Listing reported. Our team will review it shortly.' })
   } catch (err) {
     next(err)
   }

@@ -68,6 +68,13 @@ exports.loginUser = async (req, res, next) => {
       throw new ApiError(401, 'Invalid email or password')
     }
 
+    if (user.accountStatus === 'suspended') {
+      throw new ApiError(403, 'Your account has been suspended. Please contact support.')
+    }
+    if (user.accountStatus === 'banned') {
+      throw new ApiError(403, 'Your account has been permanently banned. Please contact support.')
+    }
+
     const token = generateToken(user._id)
 
     res.status(200).json({

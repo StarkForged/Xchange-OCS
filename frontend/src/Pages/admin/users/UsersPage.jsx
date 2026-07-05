@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import { getAdminUsersAPI, adminUserActionAPI } from '../../../api/admin.api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -52,6 +54,20 @@ const ACTIONS = {
   admin:  [],
 }
 
+// Hide actions that don't apply to the user's current account status —
+// e.g. an already-suspended user shouldn't show "Suspend" again.
+function getVisibleActions(user) {
+  const status = user.accountStatus || 'active'
+  return (ACTIONS[user.role] || []).filter((action) => {
+    if (action === 'suspend')   return status === 'active'
+    if (action === 'ban')       return status !== 'banned'
+    if (action === 'activate')  return status !== 'active'
+    if (action === 'verify')    return !user.isVerifiedSeller
+    if (action === 'unverify')  return !!user.isVerifiedSeller
+    return true
+  })
+}
+
 const ACTION_LABELS = {
   suspend:  { label: 'Suspend',            color: 'text-amber-400 hover:bg-amber-500/10'  },
   activate: { label: 'Activate',           color: 'text-emerald-400 hover:bg-emerald-500/10' },
@@ -60,9 +76,51 @@ const ACTION_LABELS = {
   unverify: { label: 'Remove Verification',color: 'text-slate-400 hover:bg-slate-700'    },
 }
 
-function ActionMenu({ user, onAction, busy }) {
-  const [open, setOpen] = useState(false)
-  const actions = ACTIONS[user.role] || []
+function ActionMenu({ user, onAction, busy, isOpen, onToggle, onClose }) {
+  const [pos, setPos] = useState(null)
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
+  const actions = getVisibleActions(user)
+
+  const handleToggle = (e) => {
+    e.stopPropagation()
+    if (!isOpen && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const menuHeight = actions.length * 38 + 8
+      const spaceBelow = window.innerHeight - rect.bottom
+      const openUpward = spaceBelow < menuHeight && rect.top > spaceBelow
+      setPos({
+        right: window.innerWidth - rect.right,
+        ...(openUpward
+          ? { bottom: window.innerHeight - rect.top + 4 }
+          : { top: rect.bottom + 4 }),
+      })
+    }
+    onToggle()
+  }
+
+  // Close on outside click/Esc/scroll — deliberately NOT a full-screen overlay,
+  // since a fixed inset-0 click-catcher also swallows wheel/touch scroll on
+  // whatever page content sits beneath it.
+  useEffect(() => {
+    if (!isOpen) return
+    const handlePointerDown = (e) => {
+      if (btnRef.current?.contains(e.target)) return
+      if (menuRef.current?.contains(e.target)) return
+      onClose()
+    }
+    const handleKeyDown = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', onClose, true)
+    window.addEventListener('resize', onClose)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', onClose, true)
+      window.removeEventListener('resize', onClose)
+    }
+  }, [isOpen, onClose])
 
   if (actions.length === 0) {
     return <span className="text-[10px] text-slate-600">—</span>
@@ -71,7 +129,8 @@ function ActionMenu({ user, onAction, busy }) {
   return (
     <div className="relative">
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        ref={btnRef}
+        onClick={handleToggle}
         disabled={busy}
         className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-40"
       >
@@ -82,24 +141,26 @@ function ActionMenu({ user, onAction, busy }) {
         </svg>
       </button>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-8 z-20 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[170px]">
-            {actions.map((a) => {
-              const cfg = ACTION_LABELS[a]
-              return (
-                <button
-                  key={a}
-                  onClick={() => { setOpen(false); onAction(user._id, a) }}
-                  className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors ${cfg.color}`}
-                >
-                  {cfg.label}
-                </button>
-              )
-            })}
-          </div>
-        </>
+      {isOpen && pos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-50 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[170px]"
+          style={pos}
+        >
+          {actions.map((a) => {
+            const cfg = ACTION_LABELS[a]
+            return (
+              <button
+                key={a}
+                onClick={() => { onClose(); onAction(user._id, a) }}
+                className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors ${cfg.color}`}
+              >
+                {cfg.label}
+              </button>
+            )
+          })}
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -263,12 +324,15 @@ function ConfirmDialog({ action, user, onConfirm, onCancel, busy }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function UsersPage() {
+  const [searchParams] = useSearchParams()
+  const initialSearch = searchParams.get('search') || ''
+
   const [users,       setUsers]       = useState([])
   const [pagination,  setPagination]  = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState('')
-  const [search,      setSearch]      = useState('')
-  const [searchInput, setSearchInput] = useState('')
+  const [search,      setSearch]      = useState(initialSearch)
+  const [searchInput, setSearchInput] = useState(initialSearch)
   const [roleFilter,  setRoleFilter]  = useState('')
   const [statusFilter,setStatusFilter]= useState('')
   const [verifiedFilter, setVerifiedFilter] = useState('')
@@ -278,6 +342,7 @@ export default function UsersPage() {
   const [pendingAction, setPendingAction] = useState(null) // { userId, action, user }
   const [actionBusy,  setActionBusy]  = useState(false)
   const [toast,       setToast]       = useState('')
+  const [openMenuId,  setOpenMenuId]  = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -454,7 +519,14 @@ export default function UsersPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500">{timeAgo(user.createdAt)}</td>
                     <td className="px-4 pr-5 py-3" onClick={(e) => e.stopPropagation()}>
-                      <ActionMenu user={user} onAction={handleAction} busy={actionBusy} />
+                      <ActionMenu
+                        user={user}
+                        onAction={handleAction}
+                        busy={actionBusy}
+                        isOpen={openMenuId === user._id}
+                        onToggle={() => setOpenMenuId((v) => (v === user._id ? null : user._id))}
+                        onClose={() => setOpenMenuId((v) => (v === user._id ? null : v))}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -516,15 +588,22 @@ export default function UsersPage() {
 
 // ── Mini helpers ──────────────────────────────────────────────────────────────
 
+// Native <select> with a manually centered chevron — the browser's built-in
+// arrow renders off-center once custom padding/border-radius are applied.
 function Select({ value, onChange, options }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 transition"
-    >
-      {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-    </select>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="appearance-none bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded-xl pl-3 pr-8 py-2 outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer"
+      >
+        {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+      <svg className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
   )
 }
 

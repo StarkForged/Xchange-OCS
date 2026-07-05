@@ -5,7 +5,7 @@ import { getMyListingsAPI } from '../../api/listings.api'
 import { getChatsAPI } from '../../api/chat.api'
 import RecentlyViewed from '../../components/listings/RecentlyViewed'
 import RecommendedListings from '../../components/listings/RecommendedListings'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 
 const timeAgo = (d) => {
   if (!d) return ''

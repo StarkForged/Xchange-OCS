@@ -3,8 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { categories } from '../../mock/categories'
 import { createListing } from '../../features/listings/listings.service'
 import useAuthStore from '../../store/auth.Store'
+import SearchableSelect from '../../components/ui/SearchableSelect'
 
+// All 28 states + 8 union territories of India, each mapped to its major
+// cities and (where available) neighbourhood-level areas. State/City/Area
+// are free-text inputs with <datalist> suggestions built from this data —
+// typing a value outside the list is still allowed.
 const LOCATION_DATA = {
+  'Andaman and Nicobar Islands': {
+    'Port Blair': [],
+  },
   'Andhra Pradesh': {
     Visakhapatnam: ['MVP Colony', 'Gajuwaka', 'Rushikonda', 'Dwaraka Nagar', 'Seethammadhara'],
     Vijayawada: ['Benz Circle', 'Governorpet', 'Labbipet', 'Auto Nagar', 'MG Road'],
@@ -93,7 +101,90 @@ const LOCATION_DATA = {
     Siliguri: ['Sevoke Road', 'Hill Cart Road', 'Pradhan Nagar', 'Matigara'],
     Asansol: ['Burnpur', 'Raniganj', 'Kulti'],
   },
+  'Arunachal Pradesh': {
+    Itanagar: [],
+    Naharlagun: [],
+  },
+  Assam: {
+    Guwahati: ['Dispur', 'Paltan Bazaar', 'Zoo Road', 'Beltola', 'Maligaon'],
+    Silchar: [],
+    Dibrugarh: [],
+  },
+  Bihar: {
+    Patna: ['Boring Road', 'Kankarbagh', 'Rajendra Nagar', 'Danapur', 'Bailey Road'],
+    Gaya: [],
+    Muzaffarpur: [],
+  },
+  Chhattisgarh: {
+    Raipur: ['Shankar Nagar', 'Civil Lines', 'Telibandha', 'Pandri'],
+    Bhilai: [],
+    Bilaspur: [],
+  },
+  'Himachal Pradesh': {
+    Shimla: ['Mall Road', 'Sanjauli', 'Lakkar Bazaar'],
+    Dharamshala: [],
+    Manali: [],
+  },
+  Jharkhand: {
+    Ranchi: ['Lalpur', 'Kanke Road', 'Bariatu', 'Harmu'],
+    Jamshedpur: ['Bistupur', 'Sakchi', 'Kadma'],
+    Dhanbad: [],
+  },
+  Manipur: {
+    Imphal: [],
+  },
+  Meghalaya: {
+    Shillong: ['Police Bazaar', 'Laitumkhrah', 'Laban'],
+  },
+  Mizoram: {
+    Aizawl: [],
+  },
+  Nagaland: {
+    Kohima: [],
+    Dimapur: [],
+  },
+  Odisha: {
+    Bhubaneswar: ['Saheed Nagar', 'Patia', 'Nayapalli', 'Chandrasekharpur'],
+    Cuttack: [],
+    Rourkela: [],
+  },
+  Sikkim: {
+    Gangtok: ['MG Marg', 'Tadong', 'Development Area'],
+  },
+  'Tripura': {
+    Agartala: [],
+  },
+  Uttarakhand: {
+    Dehradun: ['Rajpur Road', 'Clement Town', 'Race Course'],
+    Haridwar: [],
+    Rishikesh: [],
+  },
+  Chandigarh: {
+    Chandigarh: ['Sector 17', 'Sector 22', 'Sector 35', 'Sector 8', 'Sector 26'],
+  },
+  'Dadra and Nagar Haveli and Daman and Diu': {
+    Daman: [],
+    Silvassa: [],
+  },
+  'Jammu and Kashmir': {
+    Srinagar: ['Lal Chowk', 'Rajbagh', 'Hyderpora'],
+    Jammu: ['Gandhi Nagar', 'Channi Himmat', 'Trikuta Nagar'],
+  },
+  Ladakh: {
+    Leh: [],
+    Kargil: [],
+  },
+  Lakshadweep: {
+    Kavaratti: [],
+  },
+  Puducherry: {
+    Puducherry: ['White Town', 'Lawspet', 'Muthialpet'],
+    Karaikal: [],
+  },
 }
+
+// Alphabetically sorted list of all 36 states/UTs for the autosuggest datalist
+const STATE_OPTIONS = Object.keys(LOCATION_DATA).sort()
 
 const initialForm = {
   title: '',
@@ -112,7 +203,6 @@ export default function CreateListingPage() {
   const [imageFiles, setImageFiles]       = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
   const [coverIndex, setCoverIndex]       = useState(0)
-  const [areaSelect, setAreaSelect] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
 
@@ -149,32 +239,19 @@ export default function CreateListingPage() {
 
   const handleAttribute = (name, value) => {
     setAttributes((prev) => ({ ...prev, [name]: value }))
+    setErrors((e) => ({ ...e, [name]: undefined }))
   }
 
-  // --- Location cascades ---
-  const handleStateChange = (e) => {
-    const state = e.target.value
-    setForm((prev) => ({ ...prev, location: { state, city: '', area: '' } }))
-    setAreaSelect('')
-    setErrors((e) => ({ ...e, 'location.state': undefined, 'location.city': undefined }))
+  // --- Location (cascading searchable selects: State -> City -> Area) ---
+  const handleStateChange = (value) => {
+    setForm((prev) => ({ ...prev, location: { state: value, city: '', area: '' } }))
+    setErrors((e) => ({ ...e, 'location.state': undefined, 'location.city': undefined, 'location.area': undefined }))
   }
-
-  const handleCityChange = (e) => {
-    const city = e.target.value
-    setForm((prev) => ({ ...prev, location: { ...prev.location, city, area: '' } }))
-    setAreaSelect('')
-    setErrors((e) => ({ ...e, 'location.city': undefined }))
+  const handleCityChange = (value) => {
+    setForm((prev) => ({ ...prev, location: { ...prev.location, city: value, area: '' } }))
+    setErrors((e) => ({ ...e, 'location.city': undefined, 'location.area': undefined }))
   }
-
-  const handleAreaChange = (e) => {
-    const val = e.target.value
-    setAreaSelect(val)
-    if (val !== 'Others') {
-      setForm((prev) => ({ ...prev, location: { ...prev.location, area: val } }))
-    } else {
-      setForm((prev) => ({ ...prev, location: { ...prev.location, area: '' } }))
-    }
-  }
+  const handleAreaChange = (value) => set('location.area', value)
 
   // --- Images + cover ---
   const handleImages = (e) => {
@@ -206,8 +283,22 @@ export default function CreateListingPage() {
     if (!form.price.amount || isNaN(form.price.amount) || Number(form.price.amount) <= 0)
       errs['price.amount'] = 'Enter a valid price'
     if (!form.category) errs.category = 'Select a category'
-    if (!form.location.state) errs['location.state'] = 'State is required'
-    if (!form.location.city) errs['location.city'] = 'City is required'
+    if (!form.location.state.trim()) errs['location.state'] = 'State is required'
+    if (!form.location.city.trim()) errs['location.city'] = 'City is required'
+    if (areasForCity.length > 0 && !form.location.area.trim())
+      errs['location.area'] = 'Area is required'
+
+    // Required dynamic fields come from the category config — not hardcoded per category.
+    const dynamicFields = selectedCategory?.fields || []
+    dynamicFields.forEach((field) => {
+      if (!field.required) return
+      const val = attributes[field.name]
+      if (val === undefined || val === null || !String(val).trim()) {
+        errs[field.name] = `${field.label} is required`
+      }
+    })
+
+    if (imageFiles.length === 0) errs.images = 'At least one image is required'
     return errs
   }
 
@@ -260,7 +351,7 @@ export default function CreateListingPage() {
           key={field.name}
           value={val}
           onChange={(e) => handleAttribute(field.name, e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={inputCls(field.name)}
         >
           <option value=''>Select {field.label}</option>
           {field.options.map((opt) => (
@@ -276,7 +367,7 @@ export default function CreateListingPage() {
         placeholder={field.label}
         value={val}
         onChange={(e) => handleAttribute(field.name, e.target.value)}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        className={inputCls(field.name)}
       />
     )
   }
@@ -366,8 +457,14 @@ export default function CreateListingPage() {
             <div className="grid grid-cols-2 gap-3">
               {selectedCategory.fields.map((field) => (
                 <div key={field.name}>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{field.label}</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {field.label}
+                    {field.required && <span className="text-red-500"> *</span>}
+                  </label>
                   {renderAttributeField(field)}
+                  {errors[field.name] && (
+                    <p className="text-xs text-red-500 mt-1">{errors[field.name]}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -381,77 +478,49 @@ export default function CreateListingPage() {
           {/* State */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-            <select
+            <SearchableSelect
               value={form.location.state}
               onChange={handleStateChange}
-              className={inputCls('location.state')}
-            >
-              <option value=''>Select state</option>
-              {Object.keys(LOCATION_DATA).sort().map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+              options={STATE_OPTIONS}
+              placeholder="Select a state or union territory"
+              error={!!errors['location.state']}
+            />
             {errors['location.state'] && (
               <p className="text-xs text-red-500 mt-1">{errors['location.state']}</p>
             )}
           </div>
 
-          {/* City — appears after state is selected */}
-          {form.location.state && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-              <select
-                value={form.location.city}
-                onChange={handleCityChange}
-                className={inputCls('location.city')}
-              >
-                <option value=''>Select city</option>
-                {citiesForState.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              {errors['location.city'] && (
-                <p className="text-xs text-red-500 mt-1">{errors['location.city']}</p>
-              )}
-            </div>
-          )}
+          {/* City */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+            <SearchableSelect
+              value={form.location.city}
+              onChange={handleCityChange}
+              options={citiesForState}
+              placeholder={form.location.state ? 'Select a city' : 'Select a state first'}
+              disabled={!form.location.state}
+              error={!!errors['location.city']}
+            />
+            {errors['location.city'] && (
+              <p className="text-xs text-red-500 mt-1">{errors['location.city']}</p>
+            )}
+          </div>
 
-          {/* Area — appears after city is selected */}
-          {form.location.city && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Area / Locality
-                <span className="text-gray-400 font-normal ml-1">(optional)</span>
-              </label>
-              <select
-                value={areaSelect}
-                onChange={handleAreaChange}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value=''>Select area</option>
-                {areasForCity.map((a) => (
-                  <option key={a} value={a}>{a}</option>
-                ))}
-                <option value='Others'>Others</option>
-              </select>
-
-              {areaSelect === 'Others' && (
-                <input
-                  type="text"
-                  placeholder="Enter your area / locality name"
-                  value={form.location.area}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      location: { ...prev.location, area: e.target.value },
-                    }))
-                  }
-                  className="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  autoFocus
-                />
-              )}
-            </div>
-          )}
+          {/* Area */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Area / Locality</label>
+            <SearchableSelect
+              value={form.location.area}
+              onChange={handleAreaChange}
+              options={areasForCity}
+              placeholder={form.location.city ? 'Select an area / locality' : 'Select a city first'}
+              disabled={!form.location.city || areasForCity.length === 0}
+              error={!!errors['location.area']}
+            />
+            {errors['location.area'] && (
+              <p className="text-xs text-red-500 mt-1">{errors['location.area']}</p>
+            )}
+          </div>
         </section>
 
         {/* Images */}
@@ -460,7 +529,7 @@ export default function CreateListingPage() {
             Images <span className="text-gray-400 font-normal normal-case">(up to 5)</span>
           </h2>
 
-          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl py-6 cursor-pointer hover:border-indigo-400 transition-colors">
+          <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl py-6 cursor-pointer hover:border-indigo-400 transition-colors ${errors.images ? 'border-red-400' : 'border-gray-300'}`}>
             <span className="text-sm text-gray-500">Click to upload photos</span>
             <span className="text-xs text-gray-400 mt-1">JPG, PNG — preview only</span>
             <input
@@ -468,9 +537,10 @@ export default function CreateListingPage() {
               accept="image/*"
               multiple
               className="hidden"
-              onChange={handleImages}
+              onChange={(e) => { handleImages(e); setErrors((er) => ({ ...er, images: undefined })) }}
             />
           </label>
+          {errors.images && <p className="text-xs text-red-500 mt-1">{errors.images}</p>}
 
           {imagePreviews.length > 0 && (
             <div className="space-y-2">

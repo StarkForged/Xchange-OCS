@@ -26,6 +26,8 @@ import AdminLoginPage      from '../pages/admin/AdminLoginPage'
 import AdminLayout         from '../pages/admin/AdminLayout'
 import AdminDashboard      from '../pages/admin/dashboard/AdminDashboard'
 import UsersPage           from '../pages/admin/users/UsersPage'
+import AdminListingsPage       from '../pages/admin/listings/ListingsPage'
+import AdminListingDetailPage  from '../pages/admin/listings/ListingDetailPage'
 import AdminComingSoon     from '../pages/admin/AdminComingSoon'
 
 export default function AppRouter() {
@@ -68,7 +70,8 @@ export default function AppRouter() {
           <Route element={<AdminLayout />}>
             <Route path="/admin/dashboard"   element={<AdminDashboard />} />
             <Route path="/admin/users"       element={<UsersPage />} />
-            <Route path="/admin/listings"    element={<AdminComingSoon />} />
+            <Route path="/admin/listings"    element={<AdminListingsPage />} />
+            <Route path="/admin/listings/:id" element={<AdminListingDetailPage />} />
             <Route path="/admin/reviews"     element={<AdminComingSoon />} />
             <Route path="/admin/reports"     element={<AdminComingSoon />} />
             <Route path="/admin/categories"  element={<AdminComingSoon />} />

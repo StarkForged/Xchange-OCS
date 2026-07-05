@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getPublicProfileAPI } from '../../api/user.api'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 
 const formatPrice = (p) => p?.amount != null ? `₹${p.amount.toLocaleString('en-IN')}` : '—'
 

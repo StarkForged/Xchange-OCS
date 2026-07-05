@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getConversations } from '../../features/chat/chat.service'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 
 const timeAgo = (ts) => {
   if (!ts) return ''

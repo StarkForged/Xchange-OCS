@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { getSimilarListingsAPI } from '../../api/intelligence.api'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 
 const fmtPrice = (p) => p?.amount != null ? `₹${p.amount.toLocaleString('en-IN')}` : '—'
 

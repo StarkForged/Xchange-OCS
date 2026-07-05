@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Heart } from 'lucide-react'
 import { animate } from 'framer-motion'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 import useAuthStore from '../../store/auth.Store'
 import { toggleSavedListingAPI } from '../../api/user.api'
 

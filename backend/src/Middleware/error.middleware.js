@@ -3,8 +3,11 @@ const notFound = (req, res, next) => {
 }
 
 const errorHandler = (err, req, res, _next) => {
-  const statusCode = err.statusCode || 500
-  const message = err.message || 'Internal Server Error'
+  const isMongooseValidation = err.name === 'ValidationError' && err.errors
+  const statusCode = err.statusCode || (isMongooseValidation ? 400 : 500)
+  const message = isMongooseValidation
+    ? Object.values(err.errors).map((e) => e.message).join(', ')
+    : err.message || 'Internal Server Error'
 
   if (process.env.NODE_ENV !== 'production') {
     console.error(`[${statusCode}] ${message}`)

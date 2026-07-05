@@ -202,7 +202,7 @@ exports.getPublicProfile = async (req, res, next) => {
 
     const [listingCount, activeListings, reviewStats, recentReviews] = await Promise.all([
       Listing.countDocuments({ seller: userId }),
-      Listing.find({ seller: userId, status: 'active' })
+      Listing.find({ seller: userId, status: 'active', isHidden: { $ne: true } })
         .select('title price images category location createdAt viewsCount')
         .sort({ createdAt: -1 })
         .limit(6)
@@ -298,23 +298,18 @@ exports.trackView = async (req, res, next) => {
     const { listingId } = req.params
     if (!mongoose.Types.ObjectId.isValid(listingId)) return res.json({ ok: true })
 
-    // Pull any existing entry for this listing, then prepend a fresh one (dedup)
-    await User.updateOne(
-      { _id: req.user._id },
-      { $pull: { recentlyViewed: { listing: listingId } } }
+    const user = await User.findById(req.user._id).select('recentlyViewed')
+    if (!user) return res.json({ ok: true })
+
+    // Remove any previous occurrence, then prepend a fresh one — single
+    // read-modify-write so the same listing never ends up duplicated.
+    const deduped = user.recentlyViewed.filter(
+      (v) => v.listing.toString() !== listingId
     )
-    await User.updateOne(
-      { _id: req.user._id },
-      {
-        $push: {
-          recentlyViewed: {
-            $each:     [{ listing: listingId, viewedAt: new Date() }],
-            $position: 0,
-            $slice:    10,
-          },
-        },
-      }
-    )
+    deduped.unshift({ listing: listingId, viewedAt: new Date() })
+    user.recentlyViewed = deduped.slice(0, 10)
+
+    await user.save()
 
     res.json({ ok: true })
   } catch (err) {
@@ -330,7 +325,7 @@ exports.getRecentlyViewed = async (req, res, next) => {
       .select('recentlyViewed')
       .populate({
         path:    'recentlyViewed.listing',
-        select:  'title price images category location status seller createdAt viewsCount',
+        select:  'title price images category location status isHidden seller createdAt viewsCount',
         populate: { path: 'seller', select: 'name trustScore badges ghostRisk' },
       })
       .lean()
@@ -338,7 +333,7 @@ exports.getRecentlyViewed = async (req, res, next) => {
     if (!user) return res.json({ listings: [] })
 
     const listings = user.recentlyViewed
-      .filter((v) => v.listing && v.listing.status !== 'inactive')
+      .filter((v) => v.listing && v.listing.status !== 'removed' && !v.listing.isHidden)
       .map((v) => ({ ...v.listing, viewedAt: v.viewedAt }))
 
     res.json({ listings })
@@ -417,7 +412,9 @@ exports.getSavedListings = async (req, res, next) => {
 
     if (!user) throw new ApiError(404, 'User not found')
 
-    const listings = (user.savedListings || []).filter(Boolean)
+    const listings = (user.savedListings || [])
+      .filter(Boolean)
+      .filter((l) => l.status !== 'removed' && !l.isHidden)
 
     res.json({
       listings,

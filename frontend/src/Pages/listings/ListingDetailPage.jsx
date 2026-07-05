@@ -9,7 +9,8 @@ import { confirmTransactionAPI } from '../../api/listings.api'
 import { createReviewAPI } from '../../api/review.api'
 import useAuthStore from '../../store/auth.Store'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
+import ModerationStatusCard from '../../components/listings/ModerationStatusCard'
 
 const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')
@@ -329,6 +330,13 @@ export default function ListingDetailPage() {
           </svg>
           Back to Listings
         </button>
+
+        {/* ── Moderation notice (only the owner/admin can see this listing at all) ── */}
+        {(listing.isHidden || listing.status === 'removed') && (
+          <div className="fsu mb-6">
+            <ModerationStatusCard listing={listing} />
+          </div>
+        )}
 
         {/* ── Ghost seller page-level warning ── */}
         {isGhost && (

@@ -7,7 +7,7 @@ import { updateListingStatusAPI, confirmTransactionAPI, cancelTransactionAPI } f
 import { createReviewAPI } from '../../api/review.api'
 import { getSocket } from '../../socket'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 
 const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')

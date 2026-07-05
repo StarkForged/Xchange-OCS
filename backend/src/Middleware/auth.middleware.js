@@ -46,3 +46,21 @@ exports.requireAdmin = (req, res, next) => {
   next()
 }
 
+// Decodes the bearer token if present, but never rejects the request —
+// used on public routes that need to know "is this the owner/an admin
+// viewing?" without requiring login (e.g. listing detail).
+exports.attachUserIfPresent = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1]
+      const decoded = jwt.verify(token, process.env.JWT_SECRET)
+      const user = await User.findById(decoded.id)
+      if (user) req.user = user
+    }
+  } catch {
+    // invalid/expired token on a public route — treat as anonymous
+  }
+  next()
+}
+

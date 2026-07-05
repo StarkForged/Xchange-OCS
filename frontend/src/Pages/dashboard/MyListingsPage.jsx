@@ -1,8 +1,20 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { getMyListingsAPI, updateListingStatusAPI, getChatParticipantsAPI } from '../../api/listings.api'
-import defaultImage from '../../assets/images/products/iphone13.jpg'
+import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
+import ModerationStatusCard from '../../components/listings/ModerationStatusCard'
+
+// Admin moderation (Under Review / Removed) is a separate concept from the
+// seller-controlled status (active/paused/sold) and always takes precedence
+// when bucketing a listing for the tabs below.
+const getBucket = (l) => (l.status === 'removed' ? 'removed' : l.isHidden ? 'underReview' : l.status)
+const isModerated = (l) => l.status === 'removed' || l.isHidden
+
+const FILTER_LABELS = {
+  active: 'active', paused: 'paused', sold: 'sold',
+  underReview: 'under review', removed: 'removed',
+}
 
 const formatPrice = (p) => p?.amount != null ? `₹${p.amount.toLocaleString('en-IN')}` : '—'
 
@@ -15,9 +27,11 @@ const timeAgo = (d) => {
 }
 
 const STATUS_STYLES = {
-  active: { bg: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500', label: 'Active' },
-  sold:   { bg: 'bg-gray-100   text-gray-500   ring-gray-200',     dot: 'bg-gray-400',   label: 'Sold'   },
-  paused: { bg: 'bg-amber-50   text-amber-700  ring-amber-200',    dot: 'bg-amber-500',  label: 'Paused' },
+  active:      { bg: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500', label: 'Active' },
+  sold:        { bg: 'bg-gray-100   text-gray-500   ring-gray-200',     dot: 'bg-gray-400',   label: 'Sold'   },
+  paused:      { bg: 'bg-amber-50   text-amber-700  ring-amber-200',    dot: 'bg-amber-500',  label: 'Paused' },
+  underReview: { bg: 'bg-amber-50   text-amber-700  ring-amber-200',    dot: 'bg-amber-500',  label: 'Under Review' },
+  removed:     { bg: 'bg-rose-50    text-rose-700   ring-rose-200',     dot: 'bg-rose-500',   label: 'Removed' },
 }
 
 function ActionButton({ onClick, disabled, title, colorClass, children }) {
@@ -272,7 +286,9 @@ function ListingRow({ listing, onStatusChange }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [participants, setParticipants]   = useState([])
   const [pendingBuyer, setPendingBuyer]   = useState(null)
-  const s = STATUS_STYLES[listing.status] || STATUS_STYLES.active
+  const bucket   = getBucket(listing)
+  const moderated = isModerated(listing)
+  const s = STATUS_STYLES[bucket] || STATUS_STYLES.active
 
   const changeStatus = async (newStatus) => {
     if (busy) return
@@ -381,6 +397,8 @@ function ListingRow({ listing, onStatusChange }) {
         />
       )}
 
+      <div className="space-y-2">
+      <ModerationStatusCard listing={listing} />
       <div className="group flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 p-4 transition-all duration-200">
 
         {/* Thumbnail */}
@@ -390,15 +408,23 @@ function ListingRow({ listing, onStatusChange }) {
             alt={listing.title}
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           />
-          {listing.status === 'sold' && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
-              <span className="text-[8px] font-black text-white uppercase tracking-widest">Sold</span>
+          {moderated ? (
+            <div className={`absolute inset-0 flex items-center justify-center rounded-xl ${bucket === 'removed' ? 'bg-rose-900/40' : 'bg-amber-900/40'}`}>
+              <span className="text-[8px] font-black text-white uppercase tracking-widest text-center px-1">{s.label}</span>
             </div>
-          )}
-          {listing.status === 'paused' && (
-            <div className="absolute inset-0 bg-amber-900/30 flex items-center justify-center rounded-xl">
-              <span className="text-[8px] font-black text-white uppercase tracking-widest">Paused</span>
-            </div>
+          ) : (
+            <>
+              {listing.status === 'sold' && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
+                  <span className="text-[8px] font-black text-white uppercase tracking-widest">Sold</span>
+                </div>
+              )}
+              {listing.status === 'paused' && (
+                <div className="absolute inset-0 bg-amber-900/30 flex items-center justify-center rounded-xl">
+                  <span className="text-[8px] font-black text-white uppercase tracking-widest">Paused</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -455,61 +481,71 @@ function ListingRow({ listing, onStatusChange }) {
             </svg>
           </Link>
 
-          {/* Active: Pause + Mark Sold */}
-          {listing.status === 'active' && (
+          {/* Under administrator moderation — no seller controls, ever */}
+          {moderated ? (
+            <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-nowrap">
+              Awaiting administrator review
+            </span>
+          ) : (
             <>
-              <ActionButton
-                onClick={() => changeStatus('paused')}
-                disabled={busy}
-                title="Pause listing"
-                colorClass="hover:text-amber-600 hover:bg-amber-50"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6" />
-                  <rect x="3" y="3" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </ActionButton>
-              <ActionButton
-                onClick={() => changeStatus('sold')}
-                disabled={busy}
-                title="Mark as sold"
-                colorClass="hover:text-emerald-600 hover:bg-emerald-50"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </ActionButton>
+              {/* Active: Pause + Mark Sold */}
+              {listing.status === 'active' && (
+                <>
+                  <ActionButton
+                    onClick={() => changeStatus('paused')}
+                    disabled={busy}
+                    title="Pause listing"
+                    colorClass="hover:text-amber-600 hover:bg-amber-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6" />
+                      <rect x="3" y="3" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </ActionButton>
+                  <ActionButton
+                    onClick={() => changeStatus('sold')}
+                    disabled={busy}
+                    title="Mark as sold"
+                    colorClass="hover:text-emerald-600 hover:bg-emerald-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </ActionButton>
+                </>
+              )}
+
+              {/* Paused: Resume + Mark Sold */}
+              {listing.status === 'paused' && (
+                <>
+                  <ActionButton
+                    onClick={() => changeStatus('active')}
+                    disabled={busy}
+                    title="Resume listing"
+                    colorClass="hover:text-emerald-600 hover:bg-emerald-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-6.518-3.75A1 1 0 007 8.25v7.5a1 1 0 001.234.97l6.518-1.874A1 1 0 0016 13.874v-1.748a1 1 0 00-.748-.958z" />
+                    </svg>
+                  </ActionButton>
+                  <ActionButton
+                    onClick={() => changeStatus('sold')}
+                    disabled={busy}
+                    title="Mark as sold"
+                    colorClass="hover:text-emerald-600 hover:bg-emerald-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </ActionButton>
+                </>
+              )}
+
+              {/* Sold: no further transitions, just view (already rendered above) */}
             </>
           )}
-
-          {/* Paused: Resume + Mark Sold */}
-          {listing.status === 'paused' && (
-            <>
-              <ActionButton
-                onClick={() => changeStatus('active')}
-                disabled={busy}
-                title="Resume listing"
-                colorClass="hover:text-emerald-600 hover:bg-emerald-50"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-6.518-3.75A1 1 0 007 8.25v7.5a1 1 0 001.234.97l6.518-1.874A1 1 0 0016 13.874v-1.748a1 1 0 00-.748-.958z" />
-                </svg>
-              </ActionButton>
-              <ActionButton
-                onClick={() => changeStatus('sold')}
-                disabled={busy}
-                title="Mark as sold"
-                colorClass="hover:text-emerald-600 hover:bg-emerald-50"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </ActionButton>
-            </>
-          )}
-
-          {/* Sold: no further transitions, just view (already rendered above) */}
         </div>
+      </div>
       </div>
     </>
   )
@@ -541,13 +577,15 @@ export default function MyListingsPage() {
 
   const filtered = filter === 'all'
     ? listings
-    : listings.filter((l) => l.status === filter)
+    : listings.filter((l) => getBucket(l) === filter)
 
   const counts = {
-    all:    listings.length,
-    active: listings.filter((l) => l.status === 'active').length,
-    sold:   listings.filter((l) => l.status === 'sold').length,
-    paused: listings.filter((l) => l.status === 'paused').length,
+    all:         listings.length,
+    active:      listings.filter((l) => getBucket(l) === 'active').length,
+    paused:      listings.filter((l) => getBucket(l) === 'paused').length,
+    sold:        listings.filter((l) => getBucket(l) === 'sold').length,
+    underReview: listings.filter((l) => getBucket(l) === 'underReview').length,
+    removed:     listings.filter((l) => getBucket(l) === 'removed').length,
   }
 
   return (
@@ -573,12 +611,14 @@ export default function MyListingsPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
         {[
-          { key: 'all',    label: 'All'    },
-          { key: 'active', label: 'Active' },
-          { key: 'sold',   label: 'Sold'   },
-          { key: 'paused', label: 'Paused' },
+          { key: 'all',         label: 'All'          },
+          { key: 'active',      label: 'Active'       },
+          { key: 'paused',      label: 'Paused'       },
+          { key: 'sold',        label: 'Sold'         },
+          { key: 'underReview', label: 'Under Review' },
+          { key: 'removed',     label: 'Removed'      },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -619,12 +659,12 @@ export default function MyListingsPage() {
         <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-20 text-center">
           <div className="text-5xl mb-4">📦</div>
           <p className="text-base font-semibold text-gray-700 mb-1">
-            {filter === 'all' ? 'No listings yet' : `No ${filter} listings`}
+            {filter === 'all' ? 'No listings yet' : `No ${FILTER_LABELS[filter]} listings`}
           </p>
           <p className="text-sm text-gray-400 mb-6">
             {filter === 'all'
               ? 'Start selling by posting your first listing'
-              : `You have no listings with "${filter}" status`}
+              : `You have no listings with "${FILTER_LABELS[filter]}" status`}
           </p>
           {filter === 'all' && (
             <Link
