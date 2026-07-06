@@ -3,6 +3,7 @@ const User     = require('../Models/User')
 const Listing  = require('../Models/Listing')
 const Review   = require('../Models/Review')
 const ApiError = require('../Utils/ApiError')
+const { recalculateTrust } = require('../Services/trustEngine')
 
 // ── POST /api/admin/login ─────────────────────────────────────────────────────
 // Admin-only login. Rejects non-admin roles with 403.
@@ -269,6 +270,14 @@ exports.updateUserAction = async (req, res, next) => {
 
     await user.save()
 
+    // Identity pillar's +2 "Admin Verified Seller" points only apply once
+    // an admin has actually flipped this — recalculate immediately.
+    if (action === 'verify' || action === 'unverify') {
+      await recalculateTrust(user, {
+        trigger: action === 'verify' ? 'verified_seller_approved' : 'verified_seller_revoked',
+      })
+    }
+
     res.json({
       message: `Action "${action}" applied successfully`,
       user: {
@@ -278,6 +287,7 @@ exports.updateUserAction = async (req, res, next) => {
         role:             user.role,
         accountStatus:    user.accountStatus,
         isVerifiedSeller: user.isVerifiedSeller,
+        trustScore:       user.trustScore,
       },
     })
   } catch (err) {

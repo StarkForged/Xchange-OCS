@@ -26,28 +26,23 @@ const STATUS_STYLES = {
   removed: 'bg-rose-500/10    text-rose-400    border-rose-500/20',
 }
 
-const PRIORITY_STYLES = {
-  low:      'bg-sky-500/10    text-sky-400    border-sky-500/20',
-  medium:   'bg-amber-500/10  text-amber-400  border-amber-500/20',
-  high:     'bg-orange-500/10 text-orange-400 border-orange-500/20',
-  critical: 'bg-rose-500/10   text-rose-400   border-rose-500/20',
-}
-
 function StatusBadge({ listing }) {
   const s = STATUS_STYLES[listing.status] || 'bg-slate-700 text-slate-400 border-slate-600'
   return (
-    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${s}`}>
+    <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-full border capitalize whitespace-nowrap ${s}`}>
       {listing.status}
     </span>
   )
 }
 
-function PriorityBadge({ priority }) {
-  if (!priority || priority === 'none') return <span className="text-slate-600 text-xs">0</span>
-  const s = PRIORITY_STYLES[priority] || PRIORITY_STYLES.low
+// Table column shows the raw report COUNT, not priority — priority is
+// investigative detail that belongs on the Listing Detail / Report Detail
+// pages, not a scannable list view.
+function ReportCountBadge({ count = 0 }) {
+  if (!count) return <span className="text-slate-600 text-xs">0</span>
   return (
-    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${s}`}>
-      {priority}
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-rose-500/10 text-rose-400 border-rose-500/20">
+      ⚠ {count}
     </span>
   )
 }
@@ -58,7 +53,7 @@ function Badges({ listing }) {
       {listing.seller?.isVerifiedSeller && (
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">✓ Verified</span>
       )}
-      {listing.isHidden && (
+      {listing.isHidden && listing.status !== 'removed' && (
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600">Under Review</span>
       )}
       {listing.reportsCount > 0 && (
@@ -294,11 +289,11 @@ export default function ListingsPage() {
     }
   }
 
-  const doRemove = async (reason) => {
+  const doRemove = async (reason, severity) => {
     if (!removeTarget) return
     setActionBusy(true)
     try {
-      await removeListingAPI(removeTarget._id, 'DELETE', reason)
+      await removeListingAPI(removeTarget._id, 'DELETE', reason, severity)
       setListings((prev) => prev.filter((l) => l._id !== removeTarget._id))
       showToast('✓ Listing removed')
     } catch (e) {
@@ -491,7 +486,7 @@ export default function ListingsPage() {
                     <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{listing.category?.name || '—'}</td>
                     <td className="px-4 py-3 text-xs font-semibold text-indigo-400 whitespace-nowrap">{formatPrice(listing.price)}</td>
                     <td className="px-4 py-3"><StatusBadge listing={listing} /></td>
-                    <td className="px-4 py-3"><PriorityBadge priority={listing.reportPriority} /></td>
+                    <td className="px-4 py-3"><ReportCountBadge count={listing.reportsCount} /></td>
                     <td className="px-4 py-3 text-xs text-slate-400">{listing.viewsCount ?? 0}</td>
                     <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{formatDate(listing.createdAt)}</td>
                     <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{formatDate(listing.updatedAt)}</td>
@@ -502,7 +497,7 @@ export default function ListingsPage() {
                         onClose={() => setOpenMenuId((v) => (v === listing._id ? null : v))}
                         disabled={actionBusy}
                         items={[
-                          { key: 'open',   label: 'Open Listing',  onClick: () => window.open(`/listings/${listing._id}`, '_blank') },
+                          { key: 'open',   label: 'Open Listing',  onClick: () => window.open(`/admin/listings/${listing._id}/preview`, '_blank') },
                           { key: 'seller', label: 'View Seller',   onClick: () => navigate(`/admin/users?search=${encodeURIComponent(listing.seller?.email || '')}`) },
                           { key: 'copy',   label: 'Copy Listing ID', onClick: () => copyId(listing._id) },
                           ...(listing.status === 'removed'

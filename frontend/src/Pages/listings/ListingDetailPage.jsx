@@ -11,6 +11,8 @@ import useAuthStore from '../../store/auth.Store'
 import defaultAvatar from '../../assets/images/default-avatar.jpg'
 import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholderImage'
 import ModerationStatusCard from '../../components/listings/ModerationStatusCard'
+import KebabMenu from '../../components/ui/KebabMenu'
+import ReportModal from '../../components/reports/ReportModal'
 
 const formatPrice = (price) =>
   '₹' + (price?.amount?.toLocaleString('en-IN') ?? '0')
@@ -32,12 +34,14 @@ const formatSellerName = (seller) => {
 const formatAttributeKey = (key) =>
   key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())
 
-function trustTierColor(score) {
-  if (score >= 90) return { bar: 'bg-yellow-400', text: 'text-yellow-800' }
-  if (score >= 80) return { bar: 'bg-amber-400',  text: 'text-amber-700'  }
-  if (score >= 50) return { bar: 'bg-emerald-400', text: 'text-emerald-700' }
-  if (score >  0)  return { bar: 'bg-sky-400',    text: 'text-sky-700'    }
-  return                  { bar: 'bg-gray-300',   text: 'text-gray-400'   }
+// Public Trust Badge colors only — never a raw numeric score (Phase 12D.1).
+const PUBLIC_BADGE_DOT = {
+  gold: 'bg-yellow-400', green: 'bg-emerald-400', blue: 'bg-sky-400',
+  yellow: 'bg-amber-400', orange: 'bg-orange-400', red: 'bg-rose-500',
+}
+const PUBLIC_BADGE_TEXT = {
+  gold: 'text-yellow-800', green: 'text-emerald-700', blue: 'text-sky-700',
+  yellow: 'text-amber-700', orange: 'text-orange-700', red: 'text-rose-700',
 }
 
 function activityDot(lastActiveAt) {
@@ -219,6 +223,7 @@ export default function ListingDetailPage() {
   const [activeImage, setActiveImage] = useState(0)
   const [saved, setSaved]             = useState(false)
   const [dealDone, setDealDone]       = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -291,7 +296,7 @@ export default function ListingDetailPage() {
   const views          = viewsCount ?? 0
 
   const sellerObj      = typeof seller === 'object' ? seller : null
-  const trustColor     = trustTierColor(sellerObj?.trustScore ?? 0)
+  const publicBadge    = sellerObj?.trust?.publicBadge
   const dotColor       = activityDot(sellerObj?.sellerMetrics?.lastActiveAt)
   const isGhost        = sellerObj?.ghostRisk?.flagged
 
@@ -427,14 +432,33 @@ export default function ListingDetailPage() {
           <div className="fsu-2 md:sticky md:top-6 bg-white rounded-2xl border border-gray-100 shadow-md p-6 space-y-5">
 
             {/* Eyebrow + Title */}
-            <div>
-              <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
-                {category?.name || 'General'}
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight tracking-tight">
-                {title || 'Untitled Listing'}
-              </h1>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
+                  {category?.name || 'General'}
+                </p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight tracking-tight">
+                  {title || 'Untitled Listing'}
+                </h1>
+              </div>
+              {isAuthenticated && meStr !== sellerStr && (
+                <KebabMenu
+                  className="flex-shrink-0 -mt-1 -mr-2"
+                  items={[
+                    { key: 'report', label: 'Report Listing', danger: true, onClick: () => setShowReportModal(true) },
+                  ]}
+                />
+              )}
             </div>
+
+            {showReportModal && (
+              <ReportModal
+                reportType="listing"
+                targetId={id}
+                targetLabel={title}
+                onClose={() => setShowReportModal(false)}
+              />
+            )}
 
             {/* Price */}
             <div className="flex items-end gap-3 flex-wrap">
@@ -576,17 +600,12 @@ export default function ListingDetailPage() {
                       </Link>
                     )}
                   </div>
-                  {/* Trust score mini bar */}
-                  {sellerObj?.trustScore != null && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${trustColor.bar}`}
-                          style={{ width: `${sellerObj.trustScore}%` }}
-                        />
-                      </div>
-                      <span className={`text-[10px] font-bold flex-shrink-0 ${trustColor.text}`}>
-                        {sellerObj.trustScore}/100
+                  {/* Trust Badge only — never the raw numeric score (Phase 12D.1) */}
+                  {publicBadge && (
+                    <div className="mt-1">
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 ${PUBLIC_BADGE_TEXT[publicBadge.colorKey] || PUBLIC_BADGE_TEXT.yellow}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${PUBLIC_BADGE_DOT[publicBadge.colorKey] || PUBLIC_BADGE_DOT.yellow}`} />
+                        {publicBadge.emoji} {publicBadge.label}
                       </span>
                     </div>
                   )}
@@ -619,28 +638,6 @@ export default function ListingDetailPage() {
                   {sellerObj.badges.length > 3 && (
                     <span className="text-[10px] text-gray-400 font-medium self-center">
                       +{sellerObj.badges.length - 3} more
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Trust signals row */}
-              {sellerObj && (
-                <div className="flex flex-wrap gap-1.5">
-                  {sellerObj.sellerMetrics?.responseRate != null && (
-                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      sellerObj.sellerMetrics.responseRate >= 80
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                        : sellerObj.sellerMetrics.responseRate >= 50
-                        ? 'bg-amber-50 border-amber-200 text-amber-700'
-                        : 'bg-rose-50 border-rose-200 text-rose-700'
-                    }`}>
-                      {sellerObj.sellerMetrics.responseRate}% response
-                    </span>
-                  )}
-                  {!sellerObj?.badges?.length && !isGhost && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                      ✓ Verified Seller
                     </span>
                   )}
                 </div>
@@ -688,7 +685,7 @@ export default function ListingDetailPage() {
             </div>
           )}
 
-          {/* Full Seller Reputation Card */}
+          {/* Public Trust Card — redesigned reputation summary, no dashboard metrics */}
           <div className="fsu-5">
             <SellerReputationCard seller={sellerObj} />
           </div>

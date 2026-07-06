@@ -102,6 +102,10 @@ const listingSchema = new mongoose.Schema(
         default: null,
       },
       cancellationReason:  { type: String,  default: ''   },
+      // Anti-collusion hook (Phase 12D) — set by future pattern-detection
+      // (repeat pairs, velocity, price anomalies), never by hand. When true,
+      // trustEngine's collusionGuard excludes this deal from trust entirely.
+      flaggedSuspicious:   { type: Boolean, default: false },
     },
     viewsCount:     { type: Number, default: 0 },
     favoritesCount: { type: Number, default: 0 },

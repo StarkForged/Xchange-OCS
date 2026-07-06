@@ -17,3 +17,15 @@ export const getPublicProfileAPI = async (userId) => {
   const res = await api.get(`/users/${userId}`)
   return res.data
 }
+
+// PATCH /api/users/verify-phone
+export const verifyPhoneAPI = async () => {
+  const res = await api.patch('/users/verify-phone')
+  return res.data
+}
+
+// POST /api/users/moderation/:recordId/appeal — placeholder appeal workflow
+export const appealModerationAPI = async (recordId) => {
+  const res = await api.post(`/users/moderation/${recordId}/appeal`)
+  return res.data
+}

@@ -6,6 +6,9 @@ const Review         = require('../Models/Review')
 const Report         = require('../Models/Report')
 const ModerationLog  = require('../Models/ModerationLog')
 const ApiError       = require('../Utils/ApiError')
+const { autoResolveOpenReportsForListing } = require('./adminReport.controller')
+const { applyModerationPenalty }   = require('../Services/trustEngine')
+const { isValidSeverity, inferSeverity } = require('../Utils/moderationSeverity')
 
 // Dedicated admin-only listing moderation endpoints. Deliberately not shared
 // with the seller-facing listing.controller.js — different auth model
@@ -210,24 +213,6 @@ exports.getListingReports = async (req, res, next) => {
   }
 }
 
-// ── PATCH /api/admin/reports/:reportId/dismiss ───────────────────────────────
-
-exports.dismissReport = async (req, res, next) => {
-  try {
-    const report = await Report.findById(req.params.reportId)
-    if (!report) throw new ApiError(404, 'Report not found')
-
-    report.status     = 'dismissed'
-    report.resolvedBy  = req.user._id
-    report.resolvedAt  = new Date()
-    await report.save()
-
-    res.json({ message: 'Report dismissed', report })
-  } catch (err) {
-    next(err)
-  }
-}
-
 // ── PATCH /api/admin/listings/:id/hide ────────────────────────────────────────
 
 exports.hideListing = async (req, res, next) => {
@@ -250,14 +235,11 @@ exports.hideListing = async (req, res, next) => {
       : HIDE_REASON_LABELS[reason]
     listing.hiddenAt     = new Date()
 
-    // If this hide resolves an open report investigation, mark pending
-    // reports on this listing as actioned.
-    await Report.updateMany(
-      { listing: listing._id, status: 'pending' },
-      { $set: { status: 'actioned', resolvedBy: req.user._id, resolvedAt: new Date() } }
-    )
-
     await listing.save()
+
+    // Hiding for cause resolves any open report investigations on this listing.
+    await autoResolveOpenReportsForListing(listing._id, req.user._id, `Listing hidden: ${listing.hiddenReason}`)
+
     await logEvent(listing._id, 'hidden', req.user._id, listing.hiddenReason)
 
     res.json({ message: 'Listing hidden', listing })
@@ -292,7 +274,7 @@ exports.unhideListing = async (req, res, next) => {
 
 exports.removeListing = async (req, res, next) => {
   try {
-    const { confirm, reason = '' } = req.body
+    const { confirm, reason = '', severity, category } = req.body
     if (confirm !== 'DELETE') {
       throw new ApiError(400, 'Type DELETE to confirm removal')
     }
@@ -300,22 +282,34 @@ exports.removeListing = async (req, res, next) => {
     const listing = await Listing.findById(req.params.id)
     if (!listing) throw new ApiError(404, 'Listing not found')
 
+    // A listing removal is CONFIRMED moderation — this is the one action
+    // (as opposed to "hide", which is provisional/under-review) that feeds
+    // the seller's Moderation trust pillar. Severity comes from the admin's
+    // explicit choice, falling back to a best-effort guess from the reason
+    // category so older/simpler clients still work.
+    const finalSeverity = isValidSeverity(severity) ? severity : inferSeverity(category)
+
     listing.preRemovalStatus = listing.status
     listing.status        = 'removed'
     listing.removedBy     = req.user._id
     listing.removedReason = reason.trim()
     listing.removedAt     = new Date()
 
-    // Removing the listing resolves any open report investigation.
-    await Report.updateMany(
-      { listing: listing._id, status: 'pending' },
-      { $set: { status: 'actioned', resolvedBy: req.user._id, resolvedAt: new Date() } }
-    )
-
     await listing.save()
     await logEvent(listing._id, 'removed', req.user._id, listing.removedReason)
 
-    res.json({ message: 'Listing removed', listing })
+    // Removing the listing resolves any open report investigations on it.
+    await autoResolveOpenReportsForListing(listing._id, req.user._id, `Listing removed: ${listing.removedReason || 'policy violation'}`)
+
+    // Confirmed moderation ⇒ recalculate the seller's trust. A second
+    // confirmed critical moderation on this seller triggers a permanent ban.
+    const { banned } = await applyModerationPenalty(listing.seller, {
+      severity: finalSeverity,
+      reason:   listing.removedReason,
+      listingId: listing._id,
+    })
+
+    res.json({ message: 'Listing removed', listing, sellerBanned: banned })
   } catch (err) {
     next(err)
   }

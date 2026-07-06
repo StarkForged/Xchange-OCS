@@ -58,14 +58,18 @@ export default function ListingCard({ listing }) {
   const sellerObj  = typeof seller === 'object' ? seller : null
   const sellerName = sellerObj?.name || 'Seller'
   const isVerified = !!sellerObj?.name
-  const trustScore = sellerObj?.trustScore ?? null
   const topBadge   = sellerObj?.badges?.[0] ?? null
   const isGhost    = sellerObj?.ghostRisk?.flagged
 
-  const trustTierBadge = trustScore == null ? null
-    : trustScore >= 90 ? { label: 'Top Seller', cls: 'bg-yellow-50 text-yellow-800 border-yellow-300' }
-    : trustScore >= 80 ? { label: 'Trusted',    cls: 'bg-amber-50 text-amber-700 border-amber-200'   }
-    : trustScore >= 50 ? { label: 'Building',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+  // Public Trust Badge only — never the raw numeric score (Phase 12D.1).
+  const publicBadge = sellerObj?.trust?.publicBadge
+  const BADGE_CLS = {
+    gold: 'bg-yellow-50 text-yellow-800 border-yellow-300', green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    blue: 'bg-sky-50 text-sky-700 border-sky-200', yellow: 'bg-amber-50 text-amber-700 border-amber-200',
+    orange: 'bg-orange-50 text-orange-700 border-orange-200', red: 'bg-rose-50 text-rose-700 border-rose-200',
+  }
+  const trustTierBadge = publicBadge
+    ? { label: `${publicBadge.emoji} ${publicBadge.label}`, cls: BADGE_CLS[publicBadge.colorKey] || BADGE_CLS.yellow }
     : null
 
   const goNext = useCallback((e) => {

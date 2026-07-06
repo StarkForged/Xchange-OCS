@@ -2,6 +2,7 @@ const mongoose = require('mongoose')
 const Review   = require('../Models/Review')
 const Listing  = require('../Models/Listing')
 const ApiError = require('../Utils/ApiError')
+const { recalculateTrust } = require('../Services/trustEngine')
 
 // ── POST /api/reviews ─────────────────────────────────────────────────────────
 // Create a review. Allowed only after transaction.completedAt is set.
@@ -60,6 +61,10 @@ exports.createReview = async (req, res, next) => {
       .populate('reviewer', 'name profileImage')
       .populate('reviewee', 'name profileImage')
       .lean()
+
+    // Trust-relevant event — the reviewee's Reviews pillar (and possibly
+    // reveal state / badges) may have just changed.
+    recalculateTrust(revieweeId, { trigger: 'review_received' }).catch(() => {})
 
     res.status(201).json({ review: populated })
   } catch (err) {

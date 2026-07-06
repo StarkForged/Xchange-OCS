@@ -3,86 +3,20 @@
  *
  * computeResponseMetrics — analyses Chat + Message collections to derive
  *   response rate, average response time, and last-active timestamp.
- *   Called on profile fetch, not in the socket hot path.
+ *   Called by trustEngine.js (Marketplace Activity pillar), not in the
+ *   socket hot path.
  *
  * computeGhostRisk — scores ghost-seller likelihood (0–100) based on
- *   unresponsiveness and inactivity.
+ *   unresponsiveness and inactivity. Independent of the trust score.
  *
- * computeBadges — evaluates badge criteria and returns earned badges,
- *   preserving original earnedAt timestamps so they don't reset on recompute.
+ * Badge computation now lives in trustEngine.js (Phase 12D) — it needs
+ * pillar values this module doesn't have. Kept out of here to avoid two
+ * competing badge definitions.
  */
 
 const Chat    = require('../Models/Chat')
 const Message = require('../Models/Message')
 const Listing = require('../Models/Listing')
-
-// ── Badge definitions ─────────────────────────────────────────────────────────
-
-const BADGE_DEFS = [
-  {
-    id:          'new_seller',
-    label:       'New Seller',
-    description: 'Recently joined the marketplace',
-    icon:        'new_seller',
-    check: (_u, _m, _lc, ageDays) => ageDays < 30,
-  },
-  {
-    id:          'verified_seller',
-    label:       'Verified Seller',
-    description: 'Manually verified by the platform administrator',
-    icon:        'verified_seller',
-    check: (u) => !!u.isVerifiedSeller,
-  },
-  {
-    id:          'active_seller',
-    label:       'Active Seller',
-    description: 'Has 3 or more listings posted',
-    icon:        'active_seller',
-    check: (_u, _m, listingCount) => listingCount >= 3,
-  },
-  {
-    id:          'responsive_seller',
-    label:       'Responsive Seller',
-    description: 'Replies to 80%+ of buyer messages (min 5 inquiries)',
-    icon:        'responsive_seller',
-    check: (_u, m) => m.totalInquiries >= 5 && m.responseRate >= 80,
-  },
-  {
-    id:          'quick_responder',
-    label:       'Quick Responder',
-    description: 'Average reply time under 2 hours (min 3 inquiries)',
-    icon:        'quick_responder',
-    check: (_u, m) =>
-      m.avgResponseTimeMs !== null &&
-      m.avgResponseTimeMs < 2 * 3_600_000 &&
-      m.totalInquiries >= 3,
-  },
-  {
-    id:          'trusted_seller',
-    label:       'Trusted Seller',
-    description: 'Trust score of 80 or higher',
-    icon:        'trusted_seller',
-    check: (u) => u.trustScore >= 80,
-  },
-  {
-    id:          'top_seller',
-    label:       'Top Seller',
-    description: 'Trust score 90+, 90%+ response rate, 5+ listings, 90+ days old',
-    icon:        'top_seller',
-    check: (u, m, lc, ageDays) =>
-      u.trustScore >= 90 &&
-      ageDays >= 90 &&
-      m.responseRate >= 90 &&
-      lc >= 5,
-  },
-  {
-    id:          'veteran_seller',
-    label:       'Veteran Seller',
-    description: 'Member for 1 year or more',
-    icon:        'veteran_seller',
-    check: (_u, _m, _lc, ageDays) => ageDays >= 365,
-  },
-]
 
 // ── Response metrics ──────────────────────────────────────────────────────────
 
@@ -194,37 +128,7 @@ function computeGhostRisk(metrics) {
   }
 }
 
-// ── Badge computation ─────────────────────────────────────────────────────────
-
-/**
- * Evaluates all badge criteria and returns the earned badge list.
- * Existing earnedAt timestamps are preserved to prevent date-resets on recompute.
- *
- * @param {object} user             — user doc (plain object)
- * @param {object} metrics          — from computeResponseMetrics
- * @param {number} listingCount
- * @param {number} profileCompletion — 0–100 from computeProfileCompletion
- * @param {number} trustScore        — freshly computed value (not user.trustScore)
- */
-function computeBadges(user, metrics, listingCount, profileCompletion, trustScore) {
-  const ageDays       = Math.floor((Date.now() - new Date(user.createdAt)) / 86_400_000)
-  const userForBadges = { ...user, trustScore }         // use fresh score, not stale DB value
-  const existing      = new Map((user.badges || []).map((b) => [b.id, b.earnedAt]))
-
-  return BADGE_DEFS
-    .filter((b) => b.check(userForBadges, metrics, listingCount, ageDays, profileCompletion))
-    .map((b) => ({
-      id:          b.id,
-      label:       b.label,
-      description: b.description,
-      icon:        b.icon,
-      earnedAt:    existing.get(b.id) || new Date(),
-    }))
-}
-
 module.exports = {
   computeResponseMetrics,
   computeGhostRisk,
-  computeBadges,
-  BADGE_DEFS,
 }

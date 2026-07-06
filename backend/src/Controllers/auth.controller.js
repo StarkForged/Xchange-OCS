@@ -1,6 +1,7 @@
 const User = require('../Models/User')
 const ApiError = require('../Utils/ApiError')
 const generateToken = require('../Utils/generateToken')
+const { recalculateTrust } = require('../Services/trustEngine')
 
 const sanitizeUser = (user) => ({
   _id: user._id,
@@ -32,6 +33,11 @@ exports.registerUser = async (req, res, next) => {
       password,
       role: role === 'admin' ? 'buyer' : (role || 'buyer'),
     })
+
+    // Seed the Trust Framework state immediately (Identity pillar picks up
+    // the default emailVerified=true right away instead of waiting for the
+    // first profile fetch).
+    await recalculateTrust(user, { trigger: 'account_created' })
 
     const token = generateToken(user._id)
 

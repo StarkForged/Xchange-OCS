@@ -286,8 +286,10 @@ function ListingRow({ listing, onStatusChange }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [participants, setParticipants]   = useState([])
   const [pendingBuyer, setPendingBuyer]   = useState(null)
-  const bucket   = getBucket(listing)
-  const moderated = isModerated(listing)
+  const bucket      = getBucket(listing)
+  const isRemoved   = listing.status === 'removed'
+  const underReview = listing.isHidden && !isRemoved
+  const moderated   = isModerated(listing)
   const s = STATUS_STYLES[bucket] || STATUS_STYLES.active
 
   const changeStatus = async (newStatus) => {
@@ -459,13 +461,16 @@ function ListingRow({ listing, onStatusChange }) {
           </div>
         </div>
 
-        {/* Status badge */}
-        <div className="flex-shrink-0 hidden sm:block">
-          <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${s.bg} ${s.ring}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-            {s.label}
-          </span>
-        </div>
+        {/* Status badge — moderated listings rely solely on the ModerationStatusCard
+            banner above (single source of truth), so no pill is shown here for them. */}
+        {!moderated && (
+          <div className="flex-shrink-0 hidden sm:block">
+            <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${s.bg} ${s.ring}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+              {s.label}
+            </span>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex-shrink-0 flex items-center gap-1">
@@ -481,8 +486,11 @@ function ListingRow({ listing, onStatusChange }) {
             </svg>
           </Link>
 
-          {/* Under administrator moderation — no seller controls, ever */}
-          {moderated ? (
+          {/* Under administrator moderation — no seller controls, ever.
+              "Awaiting administrator review" only makes sense while a decision
+              is still pending (isHidden); once removed, the ModerationStatusCard
+              banner is the single source of truth and no badge is shown here. */}
+          {isRemoved ? null : underReview ? (
             <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-nowrap">
               Awaiting administrator review
             </span>

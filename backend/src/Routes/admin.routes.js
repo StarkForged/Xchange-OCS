@@ -12,7 +12,6 @@ const {
   getAdminListings,
   getAdminListingById,
   getListingReports,
-  dismissReport,
   hideListing,
   unhideListing,
   removeListing,
@@ -20,6 +19,29 @@ const {
   featureListing,
   addAdminNote,
 } = require('../Controllers/adminListing.controller')
+const {
+  getAdminReports,
+  getAdminReportById,
+  markUnderReview,
+  requestMoreEvidence,
+  resolveReport,
+  dismissReport,
+  markAsDuplicate,
+  addAdminNote: addReportAdminNote,
+} = require('../Controllers/adminReport.controller')
+const {
+  getOverview,
+  getUserAnalytics,
+  getListingAnalytics,
+  getTransactionAnalytics,
+  getReviewAnalytics,
+  getReportAnalytics,
+  getTrustAnalytics,
+  getHealth,
+  getActivityFeed,
+  getInsights,
+  exportData,
+} = require('../Controllers/analytics.controller')
 
 const router = express.Router()
 
@@ -44,6 +66,27 @@ router.patch('/listings/:id/feature',      featureListing)
 router.patch('/listings/:id/restore',      restoreListing)
 router.post('/listings/:id/notes',         addAdminNote)
 router.delete('/listings/:id',             removeListing)
-router.patch('/reports/:reportId/dismiss', dismissReport)
+
+router.get('/reports',                     getAdminReports)
+router.get('/reports/:id',                 getAdminReportById)
+router.patch('/reports/:id/review',        markUnderReview)
+router.patch('/reports/:id/request-evidence', requestMoreEvidence)
+router.patch('/reports/:id/resolve',       resolveReport)
+router.patch('/reports/:id/dismiss',       dismissReport)
+router.patch('/reports/:id/duplicate',     markAsDuplicate)
+router.post('/reports/:id/notes',          addReportAdminNote)
+
+// ── Analytics Dashboard (Phase 12E) ───────────────────────────────────────────
+router.get('/analytics/overview',      getOverview)
+router.get('/analytics/users',         getUserAnalytics)
+router.get('/analytics/listings',      getListingAnalytics)
+router.get('/analytics/transactions',  getTransactionAnalytics)
+router.get('/analytics/reviews',       getReviewAnalytics)
+router.get('/analytics/reports',       getReportAnalytics)
+router.get('/analytics/trust',         getTrustAnalytics)
+router.get('/analytics/health',        getHealth)
+router.get('/analytics/activity',      getActivityFeed)
+router.get('/analytics/insights',      getInsights)
+router.get('/analytics/export/:type',  exportData)
 
 module.exports = router

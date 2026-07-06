@@ -269,6 +269,83 @@ function UserDetailDrawer({ user, onClose }) {
             </div>
           )}
 
+          {/* Trust Framework — admin sees everything, no restrictions (Phase 12D.1) */}
+          {user.trust && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Trust Framework</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Identity',     value: `${user.trust.pillars?.identity ?? 0}/20` },
+                  { label: 'Transactions', value: `${user.trust.pillars?.transactions ?? 0}/20` },
+                  { label: 'Reviews',      value: `${user.trust.pillars?.reviews ?? 0}/20` },
+                  { label: 'Activity',     value: `${user.trust.pillars?.activity ?? 0}/20` },
+                  { label: 'Moderation',   value: `${user.trust.pillars?.moderation ?? 0}/20` },
+                  { label: 'Trust Multiplier', value: (user.trust.multiplier ?? 1).toFixed(1) },
+                ].map((m) => (
+                  <div key={m.label} className="bg-slate-800 rounded-xl p-3">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{m.label}</p>
+                    <p className={`text-sm font-bold ${m.label === 'Trust Multiplier' && Number(m.value) < 1 ? 'text-rose-400' : 'text-slate-200'}`}>{m.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-slate-800 rounded-xl p-3 flex items-center justify-between">
+                <span className="text-xs text-slate-400">Critical Strikes</span>
+                <span className={`text-sm font-bold ${(user.criticalStrikes ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {user.criticalStrikes ?? 0} of 2
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Full Moderation Timeline (confirmed actions only) */}
+          {user.moderationRecord?.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Moderation Record</p>
+              <div className="space-y-2">
+                {[...user.moderationRecord].reverse().map((m) => (
+                  <div key={m._id} className="bg-slate-800 rounded-xl p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        m.severity === 'critical' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          : m.severity === 'medium' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      }`}>
+                        {m.severity}
+                      </span>
+                      <span className="text-[10px] text-slate-500">{timeAgo(m.confirmedAt)}</span>
+                    </div>
+                    {m.reason && <p className="text-xs text-slate-300">{m.reason}</p>}
+                    {m.appealStatus !== 'none' && (
+                      <p className="text-[10px] text-amber-400 font-semibold">Appeal: {m.appealStatus}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Trust History — owner + admin only */}
+          {user.trustHistory?.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Trust History</p>
+              <div className="space-y-2">
+                {user.trustHistory.slice(0, 10).map((h, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-800 rounded-xl p-2.5">
+                    <span className="text-xs text-slate-300">{h.description}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {h.delta !== 0 && (
+                        <span className={`text-[10px] font-bold ${h.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {h.delta > 0 ? '+' : ''}{h.delta}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-500">{timeAgo(h.createdAt)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Raw id */}
           <div className="bg-slate-800/60 rounded-xl p-3">
             <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">User ID</p>

@@ -4,6 +4,8 @@ const router  = express.Router()
 const {
   getProfile,
   updateProfile,
+  verifyPhone,
+  appealModeration,
   getPublicProfile,
   toggleSavedListing,
   getSavedListings,
@@ -17,6 +19,8 @@ const { protect } = require('../Middleware/auth.middleware')
 
 router.get('/profile',           protect, getProfile)
 router.put('/profile',           protect, updateProfile)
+router.patch('/verify-phone',    protect, verifyPhone)
+router.post('/moderation/:recordId/appeal', protect, appealModeration)
 
 // Saved / favourites
 router.get('/saved',             protect, getSavedListings)

@@ -132,20 +132,32 @@ function ReportRow({ report, onDismiss, onHide, onRemove, busy }) {
   )
 }
 
-function TimelineRow({ event }) {
+function TimelineRow({ event, isLast }) {
   const meta = TIMELINE_META[event.action] || { label: event.action, icon: '•', color: 'text-slate-400' }
   return (
-    <div className="flex gap-3">
-      <div className={`w-6 h-6 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center flex-shrink-0 text-xs ${meta.color}`}>
-        {meta.icon}
+    <div className="flex gap-3.5">
+      {/* Icon + connecting line */}
+      <div className="flex flex-col items-center flex-shrink-0">
+        <div className={`w-7 h-7 rounded-full bg-slate-900 border-2 border-slate-700 flex items-center justify-center text-xs leading-none ${meta.color}`}>
+          {meta.icon}
+        </div>
+        {!isLast && <div className="w-px flex-1 min-h-[1.25rem] bg-slate-700 mt-1" />}
       </div>
-      <div className="min-w-0 pb-3 border-l border-slate-800 -ml-3 pl-6 -mt-1">
-        <p className="text-xs font-semibold text-slate-200">{meta.label}</p>
-        <p className="text-[10px] text-slate-500">
-          {formatDateTime(event.createdAt)}
-          {event.by?.name && <span> · {event.by.name}</span>}
-        </p>
-        {event.reason && <p className="text-[11px] text-slate-400 mt-0.5">{event.reason}</p>}
+
+      {/* Event body */}
+      <div className={`min-w-0 flex-1 ${isLast ? 'pb-0.5' : 'pb-5'}`}>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs font-semibold text-slate-200">{meta.label}</p>
+          <p className="text-[10px] text-slate-500 whitespace-nowrap">{formatDateTime(event.createdAt)}</p>
+        </div>
+        {event.by?.name && (
+          <p className="text-[10px] text-slate-500 mt-0.5">by {event.by.name}</p>
+        )}
+        {event.reason && (
+          <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 leading-relaxed">
+            {event.reason}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -218,10 +230,10 @@ export default function ListingDetailPage() {
     }
   }
 
-  const doRemove = async (reason) => {
+  const doRemove = async (reason, severity) => {
     setBusy(true)
     try {
-      await removeListingAPI(id, 'DELETE', reason)
+      await removeListingAPI(id, 'DELETE', reason, severity)
       showToast('✓ Listing removed')
       setShowRemove(false)
       load()
@@ -317,18 +329,18 @@ export default function ListingDetailPage() {
             ← Back to listings
           </button>
           <h1 className="text-2xl font-bold text-white tracking-tight">{listing.title}</h1>
+          {/* Removed/Under-review states are covered exclusively by the moderation
+              banner below (single source of truth) — no duplicate pill here. */}
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {isRemoved && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">Removed</span>}
-            {listing.isHidden && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600">Under Review</span>}
-            {listing.status === 'sold' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600">Sold</span>}
-            {listing.featured && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">★ Featured</span>}
+            {listing.status === 'sold' && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-700 text-slate-300 border border-slate-600">Sold</span>}
+            {listing.featured && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">★ Featured</span>}
             <PriorityBadge priority={listing.reportPriority} />
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => window.open(`/listings/${listing._id}`, '_blank')} className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-700 transition-colors">
+          <button onClick={() => window.open(`/admin/listings/${listing._id}/preview`, '_blank')} className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-700 transition-colors">
             Open Listing
           </button>
           {isRemoved ? (
@@ -362,17 +374,34 @@ export default function ListingDetailPage() {
       </div>
 
       {isRemoved && (
-        <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3 text-xs text-rose-300">
-          <p className="font-bold tracking-wide">REMOVED BY ADMINISTRATOR</p>
-          <p className="mt-1">Removed by <strong>{listing.removedBy?.name || 'admin'}</strong> on {formatDateTime(listing.removedAt)}
-          {listing.removedReason && <> — {listing.removedReason}</>}</p>
+        <div className="flex items-start gap-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl px-4 py-3.5">
+          <span className="w-7 h-7 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center flex-shrink-0 text-rose-400 text-sm">✕</span>
+          <div className="text-xs text-rose-300 space-y-1 min-w-0">
+            <p className="font-bold tracking-wide text-rose-200">Removed by Administrator</p>
+            <p>
+              Removed by <strong>{listing.removedBy?.name || 'admin'}</strong> on {formatDateTime(listing.removedAt)}
+            </p>
+            {listing.removedReason && (
+              <p><span className="font-semibold text-rose-200">Reason:</span> {listing.removedReason}</p>
+            )}
+          </div>
         </div>
       )}
       {listing.isHidden && !isRemoved && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-300">
-          <p className="font-bold tracking-wide">UNDER REVIEW</p>
-          <p className="mt-1">Flagged by <strong>{listing.hiddenBy?.name || 'admin'}</strong> on {formatDateTime(listing.hiddenAt)} — {listing.hiddenReason}</p>
-          <p className="mt-1">This listing is unavailable to buyers while under review. The seller cannot resume, pause, or edit it until it's approved.</p>
+        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3.5">
+          <span className="w-7 h-7 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0 text-amber-400 text-sm">◐</span>
+          <div className="text-xs text-amber-300 space-y-1 min-w-0">
+            <p className="font-bold tracking-wide text-amber-200">Under Review</p>
+            <p>
+              Flagged by <strong>{listing.hiddenBy?.name || 'admin'}</strong> on {formatDateTime(listing.hiddenAt)}
+            </p>
+            {listing.hiddenReason && (
+              <p><span className="font-semibold text-amber-200">Reason:</span> {listing.hiddenReason}</p>
+            )}
+            <p className="text-amber-400/80">
+              This listing is unavailable to buyers while under review. The seller cannot resume, pause, or edit it until it's approved.
+            </p>
+          </div>
         </div>
       )}
 
@@ -564,7 +593,9 @@ export default function ListingDetailPage() {
               <EmptyRow text="No moderation activity yet." />
             ) : (
               <div>
-                {timeline.map((event) => <TimelineRow key={event._id} event={event} />)}
+                {timeline.map((event, i) => (
+                  <TimelineRow key={event._id} event={event} isLast={i === timeline.length - 1} />
+                ))}
               </div>
             )}
           </Section>

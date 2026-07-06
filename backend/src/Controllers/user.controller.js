@@ -4,13 +4,8 @@ const Listing  = require('../Models/Listing')
 const Review   = require('../Models/Review')
 const ApiError = require('../Utils/ApiError')
 
-const { computeTrustScore }        = require('../Utils/trustScore')
-const { computeProfileCompletion } = require('../Utils/profileCompletion')
-const {
-  computeResponseMetrics,
-  computeGhostRisk,
-  computeBadges,
-} = require('../Utils/sellerMetrics')
+const { recalculateTrust } = require('../Services/trustEngine')
+const { redactListingSeller } = require('../Utils/publicTrust')
 
 // ── Internal: compute review stats for a user ────────────────────────────────
 
@@ -46,56 +41,29 @@ async function computeReviewStats(userId) {
 }
 
 // ── Internal: recompute and persist all reputation fields ─────────────────────
+// Delegates the actual five-pillar calculation to trustEngine (the single
+// source of truth); this wrapper just re-checks hourly like the old ghostRisk
+// cadence did, and shapes the return value the two profile endpoints expect.
 
-async function refreshReputation(user) {
-  const listingCount = await Listing.countDocuments({ seller: user._id })
+async function refreshReputation(user, trigger = 'recalculation') {
+  const stale =
+    !user.trust?.lastCalculatedAt ||
+    Date.now() - new Date(user.trust.lastCalculatedAt) > 3_600_000
 
-  // 1. Response metrics (DB-derived; heaviest step)
-  const metrics = await computeResponseMetrics(user._id)
-
-  // 2. Profile completion
-  const { pct: profileCompletion, checks: completionChecks } =
-    computeProfileCompletion(user, listingCount)
-
-  // 3. Review stats for trust score integration
-  const reviewStats = await computeReviewStats(user._id)
-
-  // 4. Trust score (uses metrics + reviewStats)
-  const { score: trustScore, breakdown } =
-    computeTrustScore(user, listingCount, metrics, reviewStats)
-
-  // 5. Ghost risk
-  const ghostRisk = computeGhostRisk(metrics)
-
-  // 6. Badges (uses fresh trustScore, not stale DB value)
-  const badges = computeBadges(user, metrics, listingCount, profileCompletion, trustScore)
-
-  // Persist only if anything changed (avoids unnecessary writes)
-  const hasChanged =
-    user.trustScore        !== trustScore       ||
-    user.profileCompletion !== profileCompletion
-
-  if (hasChanged ||
-      user.ghostRisk?.lastChecked == null ||
-      Date.now() - new Date(user.ghostRisk.lastChecked) > 3_600_000  // re-check hourly
-  ) {
-    user.trustScore        = trustScore
-    user.profileCompletion = profileCompletion
-    user.sellerMetrics     = metrics
-    user.ghostRisk         = ghostRisk
-    user.badges            = badges
-    await user.save()
+  if (stale) {
+    await recalculateTrust(user, { trigger })
   }
 
+  const reviewStats = await computeReviewStats(user._id)
+
   return {
-    trustScore,
-    profileCompletion,
-    breakdown,
-    completionChecks,
-    metrics,
-    ghostRisk,
-    badges,
-    listingCount,
+    trustScore:        user.trustScore,
+    profileCompletion: user.profileCompletion,
+    trust:             user.trust,
+    trustHistory:      user.trustHistory,
+    metrics:           user.sellerMetrics,
+    ghostRisk:         user.ghostRisk,
+    badges:            user.badges,
     reviewStats,
   }
 }
@@ -107,6 +75,8 @@ exports.getProfile = async (req, res, next) => {
     const user = await User.findById(req.user._id)
     if (!user) throw new ApiError(404, 'User not found')
 
+    // Own profile/dashboard always sees the real numbers — progressive
+    // disclosure ("Building Trust") only applies to what OTHER users see.
     const rep = await refreshReputation(user)
 
     res.json({
@@ -119,15 +89,23 @@ exports.getProfile = async (req, res, next) => {
         bio:               user.bio,
         phone:             user.phone,
         location:          user.location,
+        emailVerified:     user.emailVerified,
+        phoneVerified:     user.phoneVerified,
+        isVerifiedSeller:  user.isVerifiedSeller,
         trustScore:        rep.trustScore,
         profileCompletion: rep.profileCompletion,
         badges:            rep.badges,
         sellerMetrics:     rep.metrics,
         ghostRisk:         rep.ghostRisk,
         reviewStats:       rep.reviewStats,
+        // Owner-only (Trust Centre) — never sent from getPublicProfile.
+        moderationRecord:  user.moderationRecord,
+        criticalStrikes:   user.criticalStrikes,
+        accountStatus:     user.accountStatus,
         createdAt:         user.createdAt,
       },
-      trustBreakdown: rep.breakdown,
+      trust:        rep.trust,
+      trustHistory: rep.trustHistory,
     })
   } catch (err) {
     next(err)
@@ -157,10 +135,14 @@ exports.updateProfile = async (req, res, next) => {
     if (location !== undefined)     user.location     = location.trim()
     if (profileImage !== undefined) user.profileImage = profileImage
 
-    // Always persist profile fields immediately — do not rely on refreshReputation's
-    // conditional save, which only fires when trust/completion values change.
+    // Always persist profile fields immediately — do not rely on trust
+    // recalculation's conditional save.
     await user.save()
 
+    // Profile edits are a trust-relevant event — recalculate now rather than
+    // waiting for the hourly staleness check, so "Complete Profile" (+6,
+    // Identity pillar) reflects immediately.
+    await recalculateTrust(user, { trigger: 'profile_completed' })
     const rep = await refreshReputation(user)
 
     res.json({
@@ -173,15 +155,81 @@ exports.updateProfile = async (req, res, next) => {
         bio:               user.bio,
         phone:             user.phone,
         location:          user.location,
+        emailVerified:     user.emailVerified,
+        phoneVerified:     user.phoneVerified,
+        isVerifiedSeller:  user.isVerifiedSeller,
         trustScore:        rep.trustScore,
         profileCompletion: rep.profileCompletion,
         badges:            rep.badges,
         sellerMetrics:     rep.metrics,
         ghostRisk:         rep.ghostRisk,
         reviewStats:       rep.reviewStats,
+        // Owner-only (Trust Centre) — never sent from getPublicProfile.
+        moderationRecord:  user.moderationRecord,
+        criticalStrikes:   user.criticalStrikes,
+        accountStatus:     user.accountStatus,
         createdAt:         user.createdAt,
       },
+      trust: rep.trust,
     })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── PATCH /api/users/verify-phone  (self-service; no SMS/OTP provider wired
+// up yet — this simulates the "phone verified" step so the Identity pillar
+// and badges can be exercised end-to-end. Swap for real OTP verification
+// later without touching the trust engine.) ──────────────────────────────
+
+exports.verifyPhone = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id)
+    if (!user) throw new ApiError(404, 'User not found')
+    if (!user.phone?.trim()) throw new ApiError(400, 'Add a phone number before verifying it')
+
+    if (!user.phoneVerified) {
+      user.phoneVerified = true
+      await user.save()
+      await recalculateTrust(user, { trigger: 'phone_verified' })
+    }
+
+    res.json({ message: 'Phone verified', phoneVerified: user.phoneVerified, trust: user.trust })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── POST /api/users/moderation/:recordId/appeal  (Phase 12D.1 — UI + stub only) ─
+// No admin review queue exists yet. This just records that an appeal was
+// filed so the Trust Centre can reflect "Appeal Submitted" instead of
+// re-submitting silently doing nothing.
+
+exports.appealModeration = async (req, res, next) => {
+  try {
+    const { recordId } = req.params
+    const user = await User.findById(req.user._id)
+    if (!user) throw new ApiError(404, 'User not found')
+
+    const record = user.moderationRecord?.id(recordId)
+    if (!record) throw new ApiError(404, 'Moderation record not found')
+    if (record.severity === 'minor') throw new ApiError(400, 'Minor moderation actions cannot be appealed')
+    if (record.appealStatus === 'pending') throw new ApiError(400, 'An appeal is already pending for this action')
+
+    record.appealStatus = 'pending'
+    record.appealedAt = new Date()
+
+    user.trustHistory = user.trustHistory || []
+    user.trustHistory.unshift({
+      type: 'appeal_submitted',
+      description: 'Appeal submitted for a moderation decision',
+      delta: 0,
+      createdAt: new Date(),
+    })
+
+    await user.save()
+
+    res.status(201).json({ message: 'Appeal submitted', moderationRecord: user.moderationRecord })
   } catch (err) {
     next(err)
   }
@@ -216,6 +264,15 @@ exports.getPublicProfile = async (req, res, next) => {
         .lean(),
     ])
 
+    // ── Public Trust Visibility (Phase 12D.1) ──────────────────────────────
+    // Public profiles get ONLY: the trust badge, marketplace badges,
+    // reputation summary, latest reviews, and dynamically-generated trust
+    // reasons. Numeric score, five pillars, trust multiplier, moderation
+    // history, and trust history are owner/admin-only and are deliberately
+    // never placed on this response — see getProfile() for that surface.
+    const trust = user.trust || {}
+    const revealed = !!trust.revealed
+
     res.json({
       user: {
         _id:          user._id,
@@ -223,8 +280,12 @@ exports.getPublicProfile = async (req, res, next) => {
         profileImage: user.profileImage,
         bio:          user.bio || '',
         location:     user.location || '',
-        trustScore:   user.trustScore,
         badges:       user.badges || [],
+        trust: {
+          revealed,
+          publicBadge: trust.publicBadge ?? { emoji: '🟡', label: 'Building Trust', colorKey: 'yellow' },
+          reasons:     trust.reasons ?? [],
+        },
         sellerMetrics: {
           responseRate:      user.sellerMetrics?.responseRate      ?? 0,
           avgResponseTimeMs: user.sellerMetrics?.avgResponseTimeMs ?? null,
@@ -298,6 +359,13 @@ exports.trackView = async (req, res, next) => {
     const { listingId } = req.params
     if (!mongoose.Types.ObjectId.isValid(listingId)) return res.json({ ok: true })
 
+    // Never record a user viewing their own listing — Recently Viewed is a
+    // buyer-side signal and should only ever reflect other people's listings.
+    const listing = await Listing.findById(listingId).select('seller').lean()
+    if (!listing || String(listing.seller) === String(req.user._id)) {
+      return res.json({ ok: true })
+    }
+
     const user = await User.findById(req.user._id).select('recentlyViewed')
     if (!user) return res.json({ ok: true })
 
@@ -326,15 +394,20 @@ exports.getRecentlyViewed = async (req, res, next) => {
       .populate({
         path:    'recentlyViewed.listing',
         select:  'title price images category location status isHidden seller createdAt viewsCount',
-        populate: { path: 'seller', select: 'name trustScore badges ghostRisk' },
+        populate: { path: 'seller', select: 'name trust badges ghostRisk' },
       })
       .lean()
 
     if (!user) return res.json({ listings: [] })
 
     const listings = user.recentlyViewed
-      .filter((v) => v.listing && v.listing.status !== 'removed' && !v.listing.isHidden)
-      .map((v) => ({ ...v.listing, viewedAt: v.viewedAt }))
+      .filter((v) =>
+        v.listing &&
+        v.listing.status !== 'removed' &&
+        !v.listing.isHidden &&
+        String(v.listing.seller?._id ?? v.listing.seller) !== String(req.user._id)
+      )
+      .map((v) => redactListingSeller({ ...v.listing, viewedAt: v.viewedAt }))
 
     res.json({ listings })
   } catch (err) {
@@ -406,7 +479,7 @@ exports.getSavedListings = async (req, res, next) => {
       .select('savedListings')
       .populate({
         path:    'savedListings',
-        populate: { path: 'seller', select: 'name profileImage trustScore' },
+        populate: { path: 'seller', select: 'name profileImage trust' },
         options:  { sort: { createdAt: -1 } },
       })
 
@@ -415,6 +488,7 @@ exports.getSavedListings = async (req, res, next) => {
     const listings = (user.savedListings || [])
       .filter(Boolean)
       .filter((l) => l.status !== 'removed' && !l.isHidden)
+      .map((l) => redactListingSeller(l.toObject ? l.toObject() : l))
 
     res.json({
       listings,

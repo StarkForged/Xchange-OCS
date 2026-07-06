@@ -23,7 +23,7 @@ api.interceptors.response.use(
       useAuthStore.getState().clearAuth()
     }
 
-    return Promise.reject({ message, status })
+    return Promise.reject({ message, status, data: err.response?.data })
   }
 )
 

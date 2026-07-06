@@ -51,9 +51,27 @@ const NAV_MAIN = [
       </svg>
     ),
   },
+  {
+    to: '/dashboard/reports',
+    label: 'My Reports',
+    icon: (
+      <svg className="w-4.5 h-4.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 4.556-3.4 8.32-7.8 8.93a1.5 1.5 0 01-.4 0C8.4 20.32 5 16.556 5 12V6.741a1.5 1.5 0 011.05-1.43l5.5-1.75a1.5 1.5 0 01.9 0l5.5 1.75A1.5 1.5 0 0121 6.741V12z" />
+      </svg>
+    ),
+  },
 ]
 
 const NAV_ACCOUNT = [
+  {
+    to: '/dashboard/trust',
+    label: 'Trust Centre',
+    icon: (
+      <svg className="w-4.5 h-4.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 4.556-3.4 8.32-7.8 8.93a1.5 1.5 0 01-.4 0C8.4 20.32 5 16.556 5 12V6.741a1.5 1.5 0 011.05-1.43l5.5-1.75a1.5 1.5 0 01.9 0l5.5 1.75A1.5 1.5 0 0121 6.741V12z" />
+      </svg>
+    ),
+  },
   {
     to: '/dashboard/profile',
     label: 'Profile',

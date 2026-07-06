@@ -18,8 +18,10 @@ import MyListingsPage      from '../pages/dashboard/MyListingsPage'
 import MessagesDashboard   from '../pages/dashboard/MessagesDashboard'
 import SavedListingsPage   from '../pages/dashboard/SavedListingsPage'
 import ProfilePage         from '../pages/dashboard/ProfilePage'
+import TrustCentrePage     from '../pages/dashboard/TrustCentrePage'
 import SettingsPage        from '../pages/dashboard/SettingsPage'
 import ReviewsPage         from '../pages/dashboard/ReviewsPage'
+import MyReportsPage       from '../pages/dashboard/MyReportsPage'
 import PublicProfilePage   from '../pages/users/PublicProfilePage'
 
 import AdminLoginPage      from '../pages/admin/AdminLoginPage'
@@ -28,6 +30,9 @@ import AdminDashboard      from '../pages/admin/dashboard/AdminDashboard'
 import UsersPage           from '../pages/admin/users/UsersPage'
 import AdminListingsPage       from '../pages/admin/listings/ListingsPage'
 import AdminListingDetailPage  from '../pages/admin/listings/ListingDetailPage'
+import AdminListingPreviewPage from '../pages/admin/listings/ListingPreviewPage'
+import AdminReportsPage        from '../pages/admin/reports/ReportsPage'
+import AdminReportDetailPage   from '../pages/admin/reports/ReportDetailPage'
 import AdminComingSoon     from '../pages/admin/AdminComingSoon'
 
 export default function AppRouter() {
@@ -59,8 +64,10 @@ export default function AppRouter() {
             <Route path="/dashboard/messages"  element={<MessagesDashboard />} />
             <Route path="/dashboard/saved"     element={<SavedListingsPage />} />
             <Route path="/dashboard/profile"   element={<ProfilePage />} />
+            <Route path="/dashboard/trust"     element={<TrustCentrePage />} />
             <Route path="/dashboard/settings"  element={<SettingsPage />} />
             <Route path="/dashboard/reviews"   element={<ReviewsPage />} />
+            <Route path="/dashboard/reports"   element={<MyReportsPage />} />
           </Route>
 
         </Route>
@@ -72,8 +79,10 @@ export default function AppRouter() {
             <Route path="/admin/users"       element={<UsersPage />} />
             <Route path="/admin/listings"    element={<AdminListingsPage />} />
             <Route path="/admin/listings/:id" element={<AdminListingDetailPage />} />
+            <Route path="/admin/listings/:id/preview" element={<AdminListingPreviewPage />} />
             <Route path="/admin/reviews"     element={<AdminComingSoon />} />
-            <Route path="/admin/reports"     element={<AdminComingSoon />} />
+            <Route path="/admin/reports"     element={<AdminReportsPage />} />
+            <Route path="/admin/reports/:id" element={<AdminReportDetailPage />} />
             <Route path="/admin/categories"  element={<AdminComingSoon />} />
             <Route path="/admin/settings"    element={<AdminComingSoon />} />
             <Route path="/admin"             element={<Navigate to="/admin/dashboard" replace />} />

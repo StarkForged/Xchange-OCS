@@ -5,10 +5,16 @@ import { NO_IMAGE_PLACEHOLDER as defaultImage } from '../../constants/placeholde
 
 const fmtPrice = (p) => p?.amount != null ? `₹${p.amount.toLocaleString('en-IN')}` : '—'
 
+const BADGE_CLS = {
+  gold: 'bg-yellow-50 border-yellow-300 text-yellow-800', green: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  blue: 'bg-sky-50 border-sky-200 text-sky-700', yellow: 'bg-amber-50 border-amber-200 text-amber-700',
+  orange: 'bg-orange-50 border-orange-200 text-orange-700', red: 'bg-rose-50 border-rose-200 text-rose-700',
+}
+
 function SimilarCard({ listing }) {
-  const img  = listing.images?.[0] || defaultImage
-  const tier = (listing.seller?.trustScore ?? 0) >= 80 ? 'Trusted'
-             : (listing.seller?.trustScore ?? 0) >= 50 ? 'Building' : null
+  const img = listing.images?.[0] || defaultImage
+  // Public Trust Badge only — never the raw numeric score (Phase 12D.1).
+  const publicBadge = listing.seller?.trust?.publicBadge
 
   return (
     <Link
@@ -30,13 +36,9 @@ function SimilarCard({ listing }) {
             {listing.location?.city && (
               <span className="text-[10px] text-gray-400">{listing.location.city}</span>
             )}
-            {tier && (
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
-                tier === 'Trusted'
-                  ? 'bg-amber-50 border-amber-200 text-amber-700'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-              }`}>
-                {tier}
+            {publicBadge && (
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${BADGE_CLS[publicBadge.colorKey] || BADGE_CLS.yellow}`}>
+                {publicBadge.emoji} {publicBadge.label}
               </span>
             )}
           </div>

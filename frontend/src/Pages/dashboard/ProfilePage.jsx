@@ -79,188 +79,6 @@ const BADGE_COLORS = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TrustBar({ score }) {
-  const pct   = Math.min(Math.max(score ?? 0, 0), 100)
-  const level = pct >= 90 ? { label: 'Top Seller', color: 'from-yellow-400 to-amber-500', text: 'text-yellow-800', bg: 'bg-yellow-50', border: 'border-yellow-300' }
-    : pct >= 80           ? { label: 'Trusted',    color: 'from-amber-400 to-orange-500',  text: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200' }
-    : pct >= 50           ? { label: 'Building',   color: 'from-emerald-400 to-teal-500',  text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' }
-    : pct > 0             ? { label: 'New',        color: 'from-sky-400 to-blue-500',      text: 'text-sky-700',    bg: 'bg-sky-50',    border: 'border-sky-200' }
-    :                       { label: 'New Member', color: 'from-gray-300 to-gray-400',     text: 'text-gray-500',   bg: 'bg-gray-50',   border: 'border-gray-200' }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${level.text} ${level.bg} ${level.border}`}>{level.label}</span>
-        <span className="text-2xl font-black text-gray-900">{pct}</span>
-      </div>
-      <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full bg-gradient-to-r ${level.color} transition-all duration-700`} style={{ width: `${pct}%` }} />
-      </div>
-      <div className="flex justify-between text-[10px] text-gray-400 font-medium">
-        <span>0</span><span>Trust Score</span><span>100</span>
-      </div>
-    </div>
-  )
-}
-
-function CheckRow({ done, label, pts }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2.5">
-        <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
-          {done
-            ? <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-            : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-          }
-        </div>
-        <span className={`text-xs font-medium ${done ? 'text-gray-700' : 'text-gray-400'}`}>{label}</span>
-      </div>
-      <span className={`text-[10px] font-bold ${done ? 'text-emerald-600' : 'text-gray-300'}`}>{pts}</span>
-    </div>
-  )
-}
-
-function TrustChecklist({ breakdown }) {
-  if (!breakdown) return null
-
-  const ageDays  = breakdown.accountAgeDays  ?? 0
-  const ageScore = breakdown.accountAgeScore ?? 0
-  const ageLabel =
-    ageDays >= 180 ? '180+ days (+20)'
-    : ageDays >= 90 ? '90+ days (+15)'
-    : ageDays >= 30 ? '30+ days (+10)'
-    : ageDays >=  7 ? '7+ days (+5)'
-    : 'Under 7 days (+0)'
-
-  return (
-    <div className="space-y-4">
-
-      {/* Identity — 35 max */}
-      <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
-          <span>Identity</span>
-          <span className="text-gray-300">35 max</span>
-        </p>
-        <div className="space-y-1.5">
-          <CheckRow done={breakdown.email}        label="Email verified"         pts="+10" />
-          <CheckRow done={breakdown.phone}        label="Phone number added"     pts="+10" />
-          <CheckRow done={breakdown.profileImage} label="Profile photo uploaded" pts="+5"  />
-          <CheckRow done={breakdown.location}     label="Location set"           pts="+5"  />
-          <CheckRow done={breakdown.bio}          label="Bio/About completed"    pts="+5"  />
-        </div>
-      </div>
-
-      {/* Activity — 25 max */}
-      <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
-          <span>Activity</span>
-          <span className="text-gray-300">25 max</span>
-        </p>
-        <div className="space-y-1.5">
-          <CheckRow done={breakdown.firstListing}   label="First listing posted"   pts="+5" />
-          <CheckRow done={breakdown.threeListings}  label="3+ listings posted"     pts="+5" />
-          <CheckRow done={breakdown.fiveListings}   label="5+ listings posted"     pts="+5" />
-          <CheckRow done={breakdown.activeRecently} label="Active in last 7 days"  pts="+5" />
-          <CheckRow done={breakdown.hasMessaging}   label="Replied to a buyer"     pts="+5" />
-        </div>
-      </div>
-
-      {/* Reputation — 20 max */}
-      <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
-          <span>Reputation</span>
-          <span className="text-gray-300">20 max</span>
-        </p>
-        <div className="space-y-1.5">
-          <CheckRow done={breakdown.responseRate90} label="Response rate 90%+"    pts="+10" />
-          <CheckRow done={breakdown.responseRate70} label="Response rate 70%+"    pts="+5"  />
-          <CheckRow done={breakdown.fastResponder}  label="Avg reply under 2 hrs" pts="+10" />
-        </div>
-      </div>
-
-      {/* Account Age — 20 max */}
-      <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center justify-between">
-          <span>Account Age</span>
-          <span className="text-gray-300">20 max</span>
-        </p>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${ageScore > 0 ? 'bg-emerald-100' : 'bg-gray-100'}`}>
-              {ageScore > 0
-                ? <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                : <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-              }
-            </div>
-            <span className={`text-xs font-medium ${ageScore > 0 ? 'text-gray-700' : 'text-gray-400'}`}>{ageLabel}</span>
-          </div>
-          <span className={`text-[10px] font-bold ${ageScore > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>+{ageScore}</span>
-        </div>
-      </div>
-
-    </div>
-  )
-}
-
-function TrustImprovementGuide({ breakdown, sellerMetrics }) {
-  if (!breakdown) return null
-
-  const actions = [
-    { key: 'phone',          label: 'Add your phone number',     pts: 10, link: '/dashboard/settings', cta: 'Add phone'     },
-    { key: 'profileImage',   label: 'Upload a profile photo',    pts:  5, link: '/dashboard/settings', cta: 'Add photo'     },
-    { key: 'bio',            label: 'Write a bio about yourself', pts: 5, link: '/dashboard/settings', cta: 'Write bio'     },
-    { key: 'location',       label: 'Set your location',         pts:  5, link: '/dashboard/settings', cta: 'Set location'  },
-    { key: 'firstListing',   label: 'Post your first listing',   pts:  5, link: '/create-listing',     cta: 'Post listing'  },
-    { key: 'threeListings',  label: 'Get to 3 listings',         pts:  5, link: '/create-listing',     cta: 'Post more'     },
-    { key: 'fiveListings',   label: 'Get to 5 listings',         pts:  5, link: '/create-listing',     cta: 'Post more'     },
-    { key: 'activeRecently', label: 'Log in and stay active',    pts:  5, link: '/listings',           cta: 'Browse'        },
-    { key: 'hasMessaging',   label: 'Reply to a buyer message',  pts:  5, link: '/dashboard/messages', cta: 'View messages' },
-  ]
-
-  const missing = actions.filter((a) => !breakdown[a.key])
-
-  const suggestions = [...missing]
-  if ((sellerMetrics?.totalInquiries ?? 0) >= 3 && (sellerMetrics?.responseRate ?? 100) < 90) {
-    const alreadyIn = suggestions.some((s) => s.key === 'hasMessaging')
-    if (!alreadyIn) {
-      suggestions.push({
-        key: 'response', label: 'Boost response rate to 90%+', pts: 10,
-        link: '/dashboard/messages', cta: 'View messages',
-      })
-    }
-  }
-
-  if (!suggestions.length) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 font-semibold">
-        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        Profile fully optimized — great job!
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-2">
-      {suggestions.slice(0, 3).map((s) => (
-        <Link
-          key={s.key}
-          to={s.link}
-          className="flex items-center justify-between gap-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-xl px-4 py-3 transition-colors group"
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
-            <p className="text-xs font-semibold text-indigo-800 truncate">{s.label}</p>
-            {s.pts && <span className="text-[10px] font-bold text-indigo-500 flex-shrink-0">+{s.pts} pts</span>}
-          </div>
-          <span className="text-[10px] font-bold text-indigo-600 whitespace-nowrap group-hover:underline">{s.cta} →</span>
-        </Link>
-      ))}
-    </div>
-  )
-}
-
 function ProfileCompletionWidget({ pct }) {
   const checks = pct ?? 0
   const color  = checks < 40 ? 'bg-rose-500' : checks < 70 ? 'bg-amber-500' : 'bg-emerald-500'
@@ -407,7 +225,7 @@ export default function ProfilePage() {
   const { user, updateUser } = useAuthStore()
 
   const [profile,       setProfile]       = useState(null)
-  const [breakdown,     setBreakdown]     = useState(null)
+  const [trust,         setTrust]         = useState(null)
   const [badges,        setBadges]        = useState([])
   const [sellerMetrics, setSellerMetrics] = useState(null)
   const [ghostRisk,     setGhostRisk]     = useState(null)
@@ -420,7 +238,7 @@ export default function ProfilePage() {
       .then(([profileRes, listingsRes]) => {
         if (cancelled) return
         setProfile(profileRes.user)
-        setBreakdown(profileRes.trustBreakdown)
+        setTrust(profileRes.trust)
         setBadges(profileRes.user.badges || [])
         setSellerMetrics(profileRes.user.sellerMetrics || null)
         setGhostRisk(profileRes.user.ghostRisk || null)
@@ -519,32 +337,30 @@ export default function ProfilePage() {
         <ProfileCompletionWidget pct={profilePct} />
       </div>
 
-      {/* Trust score card */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-        <div>
-          <h3 className="text-sm font-bold text-gray-900">Trust Score</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Complete your profile to earn buyer trust</p>
+      {/* Trust Centre teaser — full breakdown, history, moderation, recovery,
+          and critical-strike status all live on the dedicated Trust Centre
+          page now (Phase 12D.1); this profile page only shows a summary. */}
+      <Link
+        to="/dashboard/trust"
+        className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 p-5 transition-all duration-200 group"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-xl flex-shrink-0">
+          {trust?.publicBadge?.emoji ?? '🟡'}
         </div>
-        <TrustBar score={data?.trustScore ?? 0} />
-        <div className="border-t border-gray-50 pt-4">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Score breakdown</p>
-          <TrustChecklist breakdown={breakdown} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-900">{trust?.publicBadge?.label ?? 'Building Trust'}</p>
+          <p className="text-xs text-gray-400 mt-0.5">View your full trust breakdown, history &amp; moderation status</p>
         </div>
-      </div>
-
-      {/* Trust Improvement Guide */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-        <div>
-          <h3 className="text-sm font-bold text-gray-900">Next Steps to Improve</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Actions that will boost your trust score most</p>
-        </div>
-        <TrustImprovementGuide breakdown={breakdown} sellerMetrics={sellerMetrics} />
-      </div>
+        <svg className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
 
       {/* Ghost Risk */}
       <GhostRiskSection ghostRisk={ghostRisk} sellerMetrics={sellerMetrics} />
 
-      {/* Badges */}
+      {/* Badges — marketplace badges are public everywhere, so they still
+          belong on the regular profile too. */}
       <BadgesCard badges={badges} />
 
       {/* Seller response stats */}

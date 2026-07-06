@@ -3,18 +3,21 @@ const mongoose   = require('mongoose')
 const Listing    = require('../Models/Listing')
 const User       = require('../Models/User')
 const Chat       = require('../Models/Chat')
-const Report     = require('../Models/Report')
 const ModerationLog = require('../Models/ModerationLog')
 const ApiError   = require('../Utils/ApiError')
 const cloudinary = require('../Config/cloudinary')
 const { getRequiredFields } = require('../Config/categoryFields')
+const { recalculateTrust }  = require('../Services/trustEngine')
+const { redactListingsSeller, redactListingSeller } = require('../Utils/publicTrust')
 
 // ── Trust-aware quality score (0–100) ─────────────────────────────────────────
 // Used for the "Best Match" sort and the recommended endpoint.
+// NOTE: must run BEFORE redactListingsSeller() strips seller.trust down to
+// just the public badge — this needs the real displayed score.
 
 function qualityScore(listing) {
   const seller   = listing.seller ?? {}
-  const trust    = (seller.trustScore ?? 0) / 100
+  const trust    = (seller.trust?.displayed ?? 0) / 100
   const rr       = (seller.sellerMetrics?.responseRate ?? 0) / 100
   const noGhost  = (seller.ghostRisk?.flagged ?? false) ? 0 : 1
 
@@ -52,6 +55,9 @@ exports.getListings = async (req, res, next) => {
 
     const query = { status: 'active', isHidden: { $ne: true } }
 
+    // Never recommend/show a logged-in user their own listings.
+    if (req.user) query.seller = { $ne: req.user._id }
+
     if (category && category !== 'all') {
       query['category.id'] = category
     }
@@ -76,8 +82,8 @@ exports.getListings = async (req, res, next) => {
 
     // Quality sort needs sellerMetrics to compute response rate
     const sellerFields = sortBy === 'quality'
-      ? 'name trustScore badges ghostRisk sellerMetrics'
-      : 'name trustScore badges ghostRisk'
+      ? 'name trust badges ghostRisk sellerMetrics'
+      : 'name trust badges ghostRisk'
 
     let listings = await Listing.find(query).sort(sort).populate('seller', sellerFields).lean()
 
@@ -88,7 +94,7 @@ exports.getListings = async (req, res, next) => {
         .map(({ _qualityScore, ...l }) => l)
     }
 
-    res.json({ listings })
+    res.json({ listings: redactListingsSeller(listings) })
   } catch (err) {
     next(err)
   }
@@ -100,7 +106,7 @@ exports.getListings = async (req, res, next) => {
 exports.getListingById = async (req, res, next) => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('seller', 'name profileImage createdAt trustScore profileCompletion badges sellerMetrics ghostRisk')
+      .populate('seller', 'name profileImage createdAt trust profileCompletion badges sellerMetrics ghostRisk')
       .lean()
     if (!listing) throw new ApiError(404, 'Listing not found')
 
@@ -112,7 +118,10 @@ exports.getListingById = async (req, res, next) => {
 
     Listing.findByIdAndUpdate(req.params.id, { $inc: { viewsCount: 1 } }).exec()
 
-    res.json({ listing })
+    // Buyer-facing product page — seller's trust is reduced to the public
+    // badge regardless of who's viewing (the owner's full breakdown lives in
+    // the Trust Centre, not here).
+    res.json({ listing: redactListingSeller(listing) })
   } catch (err) {
     next(err)
   }
@@ -201,7 +210,7 @@ exports.getSimilarListings = async (req, res, next) => {
 
     const price    = source.price?.amount ?? 0
     const catId    = source.category?.id
-    const SELLER_FIELDS = 'name trustScore badges ghostRisk'
+    const SELLER_FIELDS = 'name trust badges ghostRisk'
 
     // Primary: same category + price within ±50%
     const priceFilter = price > 0
@@ -213,6 +222,7 @@ exports.getSimilarListings = async (req, res, next) => {
       'category.id': catId,
       status:        'active',
       isHidden:      { $ne: true },
+      ...(req.user ? { seller: { $ne: req.user._id } } : {}),
       ...priceFilter,
     })
       .sort({ createdAt: -1 })
@@ -228,6 +238,7 @@ exports.getSimilarListings = async (req, res, next) => {
         'category.id': catId,
         status:        'active',
         isHidden:      { $ne: true },
+        ...(req.user ? { seller: { $ne: req.user._id } } : {}),
       })
         .sort({ createdAt: -1 })
         .limit(4 - similar.length)
@@ -236,7 +247,7 @@ exports.getSimilarListings = async (req, res, next) => {
       similar.push(...extra)
     }
 
-    res.json({ listings: similar })
+    res.json({ listings: redactListingsSeller(similar) })
   } catch (err) {
     next(err)
   }
@@ -377,6 +388,12 @@ exports.confirmTransaction = async (req, res, next) => {
       // Increment completedDeals counter on both participants (non-blocking)
       User.updateOne({ _id: listing.seller },            { $inc: { completedDeals: 1 } }).exec()
       User.updateOne({ _id: listing.transaction.buyer }, { $inc: { completedDeals: 1 } }).exec()
+
+      // Trust-relevant event for both participants — Transaction History
+      // pillar (and possibly Marketplace Activity tenure / progressive
+      // reveal) may have just changed for either side.
+      recalculateTrust(listing.seller, { trigger: 'transaction_completed' }).catch(() => {})
+      recalculateTrust(listing.transaction.buyer, { trigger: 'transaction_completed' }).catch(() => {})
     }
 
     await listing.save()
@@ -457,7 +474,7 @@ exports.cancelTransaction = async (req, res, next) => {
 
 exports.getRecommended = async (req, res, next) => {
   try {
-    const SELLER_FIELDS = 'name trustScore badges ghostRisk sellerMetrics'
+    const SELLER_FIELDS = 'name trust badges ghostRisk sellerMetrics'
 
     const user = await User.findById(req.user._id)
       .select('recentlyViewed savedListings recentSearches')
@@ -491,6 +508,7 @@ exports.getRecommended = async (req, res, next) => {
         'category.id': { $in: [...catIds] },
         status:        'active',
         isHidden:      { $ne: true },
+        seller:        { $ne: req.user._id },
       })
         .sort({ createdAt: -1 })
         .limit(24)
@@ -508,6 +526,7 @@ exports.getRecommended = async (req, res, next) => {
         title:    regex,
         status:   'active',
         isHidden: { $ne: true },
+        seller:   { $ne: req.user._id },
       })
         .sort({ createdAt: -1 })
         .limit(8)
@@ -519,7 +538,7 @@ exports.getRecommended = async (req, res, next) => {
     // Top-up with latest listings when pool is thin
     if (pool.length < 8) {
       const topEx = [...excludeIds, ...pool.map((l) => l._id)]
-      const topUp = await Listing.find({ _id: { $nin: topEx }, status: 'active', isHidden: { $ne: true } })
+      const topUp = await Listing.find({ _id: { $nin: topEx }, status: 'active', isHidden: { $ne: true }, seller: { $ne: req.user._id } })
         .sort({ createdAt: -1 })
         .limit(8 - pool.length)
         .populate('seller', SELLER_FIELDS)
@@ -534,40 +553,7 @@ exports.getRecommended = async (req, res, next) => {
       .slice(0, 8)
       .map(({ _qs, ...l }) => l)
 
-    res.json({ listings: ranked })
-  } catch (err) {
-    next(err)
-  }
-}
-
-// POST /api/listings/:id/report  (protected) ──────────────────────────────────
-// Feeds the admin moderation queue — see adminListing.controller.js.
-
-const REPORT_REASONS = ['spam', 'duplicate', 'fraudulent', 'inappropriate', 'misleading', 'counterfeit', 'other']
-
-exports.reportListing = async (req, res, next) => {
-  try {
-    const { reason, comment = '' } = req.body
-    if (!REPORT_REASONS.includes(reason)) {
-      throw new ApiError(400, `reason must be one of: ${REPORT_REASONS.join(', ')}`)
-    }
-
-    const listing = await Listing.findById(req.params.id)
-    if (!listing) throw new ApiError(404, 'Listing not found')
-
-    await Report.create({
-      listing:  listing._id,
-      reporter: req.user._id,
-      reason,
-      comment: String(comment).trim(),
-    })
-
-    listing.reportsCount = (listing.reportsCount ?? 0) + 1
-    await listing.save()
-
-    ModerationLog.create({ listing: listing._id, action: 'reported', by: req.user._id, reason }).catch(() => {})
-
-    res.status(201).json({ message: 'Listing reported. Our team will review it shortly.' })
+    res.json({ listings: redactListingsSeller(ranked) })
   } catch (err) {
     next(err)
   }
